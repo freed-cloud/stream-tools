@@ -334,10 +334,12 @@ function Test-WindowsUpdate {
 }
 
 function Test-Internet {
-    try {
-        $null = Invoke-WebRequest -Uri 'https://www.twitch.tv' -Method Head -UseBasicParsing -TimeoutSec 6
-        Add-Result 'OK' 'Internet' 'Twitch is bereikbaar.'
-    } catch { Add-Result 'FAIL' 'Internet' 'Twitch is niet bereikbaar. Check je wifi.' }
+    # Alleen kijken of er een verbinding met Twitch (poort 443) lukt; een webpagina ophalen is niet nodig.
+    $ok = $false
+    $tcp = New-Object Net.Sockets.TcpClient
+    try { $ok = $tcp.ConnectAsync('www.twitch.tv', 443).Wait(5000) -and $tcp.Connected } catch { $ok = $false } finally { $tcp.Close() }
+    if ($ok) { Add-Result 'OK' 'Internet' 'Twitch is bereikbaar.' }
+    else { Add-Result 'FAIL' 'Internet' 'Twitch is niet bereikbaar. Check je wifi.' }
 }
 
 function Test-Obs {
