@@ -19,7 +19,19 @@ $env:CLIPPOSTER_SCREENSHOT = Join-Path $uit ("clip-poster$suffix.png")
 $env:CLIPPOSTER_SCREENSHOT_SETTINGS = Join-Path $uit ("instellingen$suffix.png")
 if ($Scherm) { $env:CLIPPOSTER_SHOT_SCREEN = '1' } else { $env:CLIPPOSTER_SHOT_SCREEN = '' }
 $p = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $repo 'ClipPoster\ClipPoster.ps1')) -PassThru -NoNewWindow -RedirectStandardError (Join-Path $uit "fout$suffix.txt")
-if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Host 'De Clip-poster bleef hangen.'; exit 1 }
+if (-not $p.WaitForExit(90000)) {
+    # Wat staat er op het scherm? (bijv. een melding die op een klik wacht)
+    Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+    $sb = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $bmp = New-Object System.Drawing.Bitmap($sb.Width, $sb.Height)
+    $gr = [System.Drawing.Graphics]::FromImage($bmp); $gr.CopyFromScreen($sb.Location, [System.Drawing.Point]::Empty, $sb.Size); $gr.Dispose()
+    $bmp.Save((Join-Path $uit "hangen$suffix.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+    Get-Process | Where-Object { $_.MainWindowTitle } | ForEach-Object { Write-Host ('Venster: {0} - {1}' -f $_.ProcessName, $_.MainWindowTitle) }
+    $p.Kill(); Write-Host 'De Clip-poster bleef hangen.'
+    Get-Content (Join-Path $uit "fout$suffix.txt") -ErrorAction SilentlyContinue | Write-Host
+    Get-Content (Join-Path $app 'log.txt') -ErrorAction SilentlyContinue | Write-Host
+    exit 1
+}
 $fout = Get-Content (Join-Path $uit "fout$suffix.txt") -Raw -ErrorAction SilentlyContinue
 if ($fout) { Write-Host "Fout: $fout" }
 $ok = (Test-Path $env:CLIPPOSTER_SCREENSHOT) -and (Test-Path $env:CLIPPOSTER_SCREENSHOT_SETTINGS)
