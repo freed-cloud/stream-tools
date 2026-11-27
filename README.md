@@ -1,4 +1,4 @@
-# Stream-tools voor playingparentsnl
+# Stream-tools: Clip-poster en Stream-check
 
 [![Tests](https://github.com/freed-cloud/stream-tools/actions/workflows/tests.yml/badge.svg)](https://github.com/freed-cloud/stream-tools/actions/workflows/tests.yml)
 
@@ -10,6 +10,14 @@ een echt probleem zien, uitzoeken hoe het op te lossen is, het bouwen, en het go
 | --- | --- | --- |
 | **Stream-check** | Een Windows-update veranderde ongemerkt de headset, en onze stream had ruim 7 uur geen geluid. | Eén knop die vóór het live gaan Windows, het geluid, internet en OBS controleert. |
 | **Clip-poster** | Clips posten op YouTube en TikTok kostte elke dag veel klikken, en ging soms mis (verkeerd kanaal, dubbel, verkeerde volgorde). | Een wachtrij die zelf de volgorde bepaalt en 4 keer per dag automatisch op YouTube post, met controles en meldingen op de telefoon. |
+
+## Gratis downloaden
+
+De Clip-poster is voor iedereen: stel je eigen kanaal, games (hashtags), volgorde en posttijden in.
+
+**[Download Clip-poster.zip](https://github.com/freed-cloud/stream-tools/releases/latest/download/Clip-poster.zip)** · [Uitleg en handleiding](https://freed-cloud.github.io/clip-poster/) · licentie MIT
+
+![De Clip-poster](https://freed-cloud.github.io/assets/img/clip-poster.png)
 
 Beide draaien op **Windows PowerShell 5.1**, dat standaard in Windows zit. Er hoeft niets extra geïnstalleerd te worden (alleen ffmpeg voor de muziekfunctie).
 
