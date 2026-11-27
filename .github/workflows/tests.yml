@@ -1,0 +1,72 @@
+name: Tests
+
+# Bij elke wijziging (en met de hand via "Run workflow") worden de Clip-poster en de Stream-check
+# getest op een echte Windows-machine van GitHub, met dezelfde Windows PowerShell 5.1 als op de stream-pc.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-powershell-5:
+    name: Windows PowerShell 5.1 (zoals op de stream-pc)
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ffmpeg installeren (voor de muziektests)
+        shell: pwsh
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Controle - scripts opgeslagen als UTF-8 met BOM (nodig voor PowerShell 5.1)
+        shell: pwsh
+        run: |
+          $fout = 0
+          foreach ($f in Get-ChildItem -Recurse -Filter *.ps1) {
+            $b = [IO.File]::ReadAllBytes($f.FullName)
+            if ($b.Length -lt 3 -or $b[0] -ne 0xEF -or $b[1] -ne 0xBB -or $b[2] -ne 0xBF) { Write-Host "Geen BOM: $($f.FullName)"; $fout++ }
+          }
+          if ($fout) { exit 1 } else { Write-Host 'Alle scripts hebben een BOM.' }
+
+      - name: Controle - Stream-check zonder syntaxfouten (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $e = $null; $t = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\StreamCheck\StreamCheck.ps1", [ref]$t, [ref]$e)
+          $e | ForEach-Object { Write-Host ($_.Message + ' (regel ' + $_.Extent.StartLineNumber + ')') }
+          if ($e.Count) { exit 1 } else { Write-Host 'Stream-check: geen syntaxfouten.' }
+
+      - name: Tests Clip-poster (PowerShell 5.1)
+        shell: powershell
+        run: |
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests\Run-Tests.ps1
+          exit $LASTEXITCODE
+
+  powershell-7:
+    name: PowerShell 7 (Windows en Linux)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: ffmpeg installeren (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: ffmpeg installeren (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install ffmpeg -y --no-progress
+      - name: Tests Clip-poster (PowerShell 7)
+        shell: pwsh
+        run: |
+          if ($IsWindows) { $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path }
+          pwsh -NoProfile -File tests/Run-Tests.ps1
+          exit $LASTEXITCODE
