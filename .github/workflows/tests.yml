@@ -70,3 +70,26 @@ jobs:
           if ($IsWindows) { $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path }
           pwsh -NoProfile -File tests/Run-Tests.ps1
           exit $LASTEXITCODE
+
+  venster:
+    name: Venster openen en schermafbeeldingen (Windows PowerShell 5.1)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Clip-poster openen met testclips (DrawToBitmap)
+        shell: powershell
+        run: |
+          powershell -NoProfile -STA -ExecutionPolicy Bypass -File tests\Maak-Schermafbeeldingen.ps1
+          exit $LASTEXITCODE
+      - name: Clip-poster openen met testclips (scherm)
+        shell: powershell
+        continue-on-error: true
+        run: |
+          powershell -NoProfile -STA -ExecutionPolicy Bypass -File tests\Maak-Schermafbeeldingen.ps1 -Scherm
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: schermafbeeldingen
+          path: schermafbeeldingen/

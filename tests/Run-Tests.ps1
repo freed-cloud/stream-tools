@@ -12,6 +12,10 @@ function New-TestRoot([string]$name) {
     $root = Join-Path ([IO.Path]::GetTempPath()) $name
     & $py (Join-Path $PSScriptRoot 'maak_testmappen.py') $root | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'maak_testmappen.py mislukt' }
+    # Net als op de stream-pc: een bestaande installatie van versie 4 (overstap naar versie 5 wordt zo meegetest).
+    $app = Join-Path $root 'AppData/ClipPoster'
+    New-Item -ItemType Directory -Force $app | Out-Null
+    '{"Versie":4,"Privacy":"public"}' | Set-Content -LiteralPath (Join-Path $app 'config.json') -Encoding UTF8
     return $root
 }
 "PowerShell $($PSVersionTable.PSVersion) op $([Environment]::OSVersion.VersionString)"
@@ -231,6 +235,50 @@ Format-Stats $rows
 $null = Complete-Upload 'k' 'GTA 6' 'FOUT|iets'
 Check ($script:PhoneLog.Count -ge 1) "melding gemaakt: $($script:PhoneLog[-1])"
 Check ($script:Cfg.NtfyTopic -like 'playingparentsnl-*') "onderwerp: $($script:Cfg.NtfyTopic)"
+
+"=================== Nieuwe gebruiker (gedownload, nog niets ingesteld) ==================="
+$root3 = Join-Path ([IO.Path]::GetTempPath()) 'clipposter-test-3'
+Remove-Item -Recurse -Force $root3 -ErrorAction SilentlyContinue
+$env:CLIPPOSTER_TESTROOT = $root3
+. $src -GeenVenster
+Check (-not $script:Cfg.Ingesteld) 'instelscherm moet nog'
+Check (-not $script:Cfg.KanaalId -and -not $script:Cfg.TwitchRegel -and -not @($script:Cfg.Rotatie).Count) 'geen kanaal, Twitch-regel of rotatie van playingparentsnl'
+Check ($script:Cfg.NtfyTopic -like 'clipposter-*') "eigen meldingsonderwerp: $($script:Cfg.NtfyTopic)"
+New-Item -ItemType Directory -Force $VandaagDir | Out-Null
+function Nieuw([string]$naam, [string]$tekst) {
+    [IO.File]::WriteAllBytes((Join-Path $VandaagDir ($naam + '.mp4')), [byte[]](1..200))
+    [IO.File]::WriteAllText((Join-Path $VandaagDir ($naam + '.txt')), $tekst, (New-Object System.Text.UTF8Encoding($true)))
+    $o = (Get-Date).AddMinutes(-30); $f = Get-Item -LiteralPath (Join-Path $VandaagDir ($naam + '.mp4')); $f.CreationTime = $o; $f.LastWriteTime = $o
+}
+Nieuw '1 - Mijn eerste headshot' "Wat een schot! #valorant #gaming"
+Nieuw '2 - Bouwen tot de zon opkomt' "We bouwen een kasteel #minecraft"
+Nieuw '3 - Nog een clutch' "Clutch in de laatste ronde #valorant"
+Nieuw '4 - Zonder tekst' ''
+$all = @(Get-AllClips); $q = @(Get-Queue $all)
+Check ($all.Count -eq 4) "vier clips gevonden ($($all.Count))"
+Check ($q.Count -eq 3) "drie in de wachtrij, zonder Origineel-regel of games ($($q.Count))"
+Check (($all | ? { $_.Mp4 -like '*Zonder tekst*' }).Probleem -eq 'tekst is leeg') 'clip zonder tekst overgeslagen'
+Check ($q[0].Title -eq 'Mijn eerste headshot') "titel uit bestandsnaam: $($q[0].Title)"
+$m = New-UploadMeta 'T' 'Tekst #valorant' 'public' | ConvertFrom-Json
+Check ($m.snippet.description -notmatch 'twitch') 'geen Twitch-regel als die niet is ingesteld'
+"== Games instellen: om en om"
+$script:Cfg.Games = @([pscustomobject]@{ Naam = 'Valorant'; Tags = @('valorant') }, [pscustomobject]@{ Naam = 'Minecraft'; Tags = @('minecraft', 'mc') })
+$script:Cfg.TwitchRegel = 'Live op Twitch: https://twitch.tv/voorbeeld'
+$script:Cfg.Ingesteld = $true; Save-Cfg
+$q = @(Get-Queue (Get-AllClips))
+"   " + (($q | % { $_.Game }) -join ' > ')
+Check ($q[0].Game -eq 'Valorant' -and $q[1].Game -eq 'Minecraft' -and $q[2].Game -eq 'Valorant') 'Valorant en Minecraft om en om'
+Check ((Get-GameFromName '5 - Titel - Minecraft') -eq 'Minecraft') 'game uit bestandsnaam'
+Check ((Get-GameFromText 'leuk #MC') -eq 'Minecraft') 'tweede hashtag werkt ook'
+"== Eerste upload onthoudt het kanaal"
+$r = Complete-Upload $q[0].Key $q[0].Game 'OK|v1|public|UCnieuw123|Mijn Kanaal'
+Check ($script:Cfg.KanaalId -eq 'UCnieuw123' -and $script:Cfg.KanaalNaam -eq 'Mijn Kanaal') 'kanaal onthouden'
+Check (-not $script:Cfg.AutoGepauzeerd) 'geen pauze bij eerste upload'
+$q = @(Get-Queue (Get-AllClips))
+$r = Complete-Upload $q[0].Key $q[0].Game 'OK|v2|public|UCanders|Iemand Anders'
+Check ($script:Cfg.AutoGepauzeerd -and $r -match 'Mijn Kanaal') 'daarna wel pauze bij ander kanaal'
+$re = Load-Json $ConfigFile $null
+Check ($re.Versie -eq 5 -and @($re.Games).Count -eq 2 -and $re.TwitchRegel -like '*voorbeeld') 'instellingen bewaard'
 
 ""
 if ($script:fails) { "MISLUKT: $script:fails test(s)"; exit 1 } else { 'ALLE TESTS GESLAAGD'; exit 0 }

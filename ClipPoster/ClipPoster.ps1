@@ -1,20 +1,20 @@
-﻿# Clip-poster voor playingparentsnl (versie 4)
+﻿# Clip-poster (versie 5) - gratis en open source, door Freddy den Haan
+# https://github.com/freed-cloud/stream-tools
 #
 # Wat hij doet:
 # - Maakt zelf een wachtrij van alle clips die klaar zijn om te posten:
-#     * Bureaublad\Clips voor socials\Vandaag posten   (met .txt: YOUTUBE-TITEL / TEKST)
-#     * Bureaublad\Clips voor socials\Replay ... - staand.mp4  (met "- tekst.txt")
+#     * <clipsmap>\Vandaag posten   (video + .txt met dezelfde naam: gewone tekst, of YOUTUBE-TITEL / TEKST)
+#     * <clipsmap>\Replay ... - staand.mp4  (met "- tekst.txt"; de naam die OBS-replays krijgen)
 #   De titel komt uit de .txt, anders uit de naam in Videos\AI-clips\<game>, anders uit de tekst.
-# - Controleert de volgorde (oud naar nieuw per game), dubbele clips, ontbrekende teksten,
-#   en GTA-clips van de stream met echo die nog muziek nodig hebben (die worden overgeslagen).
-# - Post om en om GTA 6 en Arma Reforger (andere games, zoals Fall Guys, schuiven mee in de rij).
+# - Herkent de game aan de hashtags (instelbaar) en post games om en om, oud naar nieuw.
+# - Controleert de volgorde, dubbele clips, ontbrekende teksten en clips die nog muziek nodig hebben.
 # - Eén knop "Post volgende": uploadt naar YouTube en zet TikTok klaar.
 # - Automatisch posten: een Windows-taak die op vaste tijden de volgende clip op YouTube zet,
 #   ook als dit venster dicht is. TikTok blijft handwerk (TikTok laat geen automatisch posten toe
 #   zonder goedgekeurde app); de clips die nog naar TikTok moeten staan in een eigen lijst.
 # - Klaar op YouTube en TikTok: video en tekst gaan naar de map "Gepost". Er wordt niets verwijderd.
-# Instagram zit er bewust niet in: dat post Freddy apart met de hand, anders blokkeert Instagram hem.
-# Werkt met Windows PowerShell 5.1 (standaard in Windows).
+# Instagram zit er bewust niet in: Instagram blokkeert accounts die automatisch posten.
+# Werkt met Windows PowerShell 5.1 (standaard in Windows 10 en 11).
 #
 # Opstarten zonder venster (voor de Windows-taak):  ClipPoster.ps1 -Auto
 # Alleen kijken wat er gepost zou worden:              ClipPoster.ps1 -Auto -Proef
@@ -33,6 +33,7 @@ if ($script:HasGui) {
 # Onverwachte fout? Laat hem zien (venster) of schrijf hem in het logboek (automatisch), in plaats van stil te stoppen.
 trap {
     $m = "Er ging iets mis: $($_.Exception.Message) (regel $($_.InvocationInfo.ScriptLineNumber))"
+    if ($env:CLIPPOSTER_SCREENSHOT) { [Console]::Error.WriteLine($m); exit 1 }   # test zonder iemand achter het scherm
     if ($script:HasGui) { [System.Windows.Forms.MessageBox]::Show($m, 'Fout') | Out-Null }
     else { try { Write-Log $m } catch { Write-Output $m } }
     break
@@ -50,12 +51,6 @@ if ($env:CLIPPOSTER_TESTROOT) {
     $VideosDir = [Environment]::GetFolderPath('MyVideos')
     $AppDir   = Join-Path $env:APPDATA 'ClipPoster'
 }
-$SocialsDir = Join-Path $Desktop 'Clips voor socials'
-$VandaagDir = Join-Path $SocialsDir 'Vandaag posten'
-$GepostDir  = Join-Path $SocialsDir 'Gepost'
-$AiDir      = Join-Path $VideosDir 'AI-clips'
-$MuziekDir  = Join-Path $SocialsDir 'Muziek'
-$InstaDir   = Join-Path $SocialsDir 'Instagram posten'
 $ConfigFile = Join-Path $AppDir 'config.json'
 $SecretFile = Join-Path $AppDir 'client_secret.json'
 $TokenFile  = Join-Path $AppDir 'token.dat'
@@ -89,39 +84,76 @@ function Set-Prop($obj, [string]$name, $value) {
 
 # ---------------------------------------------------------------- instellingen
 $DefaultCfg = [pscustomobject]@{
-    Versie        = 4
+    Versie        = 5
+    # Is het instelscherm al een keer opgeslagen? (Anders opent het vanzelf bij de eerste start.)
+    Ingesteld     = $false
+    # Naam van het YouTube-kanaal (alleen voor meldingen en het venster).
+    KanaalNaam    = ''
+    # Map met de clips. Leeg = Bureaublad\Clips voor socials.
+    ClipsMap      = ''
     Privacy       = 'public'
     # Vaste posttijden voor automatisch posten (4 per dag). Niet precies op het hele uur: minder druk bij YouTube.
     Tijden        = @('12:07', '16:04', '19:06', '21:03')
-    # Om en om posten in deze volgorde. Andere games schuiven er achteraan bij.
-    Rotatie       = @('GTA 6', 'Arma Reforger')
-    # Streams met echo: GTA-clips van deze datum alleen posten als er muziek onder zit (map "Vandaag posten").
-    EchoDatums    = @('2026-11-19')
-    # Het YouTube-kanaal van playingparentsnl. Gaat een upload naar een ander kanaal, dan stopt automatisch posten.
-    KanaalId      = 'UC0EU7Am-oiUnpg_yv9FHJkQ'
+    # Games, herkend aan de hashtags in de tekst (zonder #, kleine letters).
+    Games         = @()
+    # Om en om posten in deze volgorde. Andere games schuiven er af en toe tussen.
+    Rotatie       = @()
+    # Moet elke clip een herkende game hebben? (Nee = onbekende games gaan als "Overig" mee.)
+    GameVerplicht = $false
+    # Moet een clip in "Vandaag posten" een regel "Origineel: Replay ..." hebben? (Voorkomt dubbel posten
+    # als dezelfde clip ook als OBS-replay in de clipsmap staat.)
+    OrigineelVerplicht = $false
+    # Streams waarvan clips van de muziek-game alleen met muziek eronder gepost worden (bijv. geluid met echo).
+    EchoDatums    = @()
+    MuziekGame    = ''
+    # Het YouTube-kanaal-ID. Gaat een upload naar een ander kanaal, dan stopt automatisch posten.
+    # Leeg = wordt bij de eerste geslaagde upload vanzelf ingevuld.
+    KanaalId      = ''
     LaatsteGame   = ''
-    # Aantal posts uit de hoofdrotatie sinds de laatste "andere" game (bijv. Fall Guys).
+    # Aantal posts uit de hoofdrotatie sinds de laatste "andere" game.
     SindsExtra    = 0
-    # Regel die onder elke YouTube-beschrijving komt.
-    TwitchRegel   = 'Live op Twitch: https://twitch.tv/playingparentsnl'
+    # Regel die onder elke YouTube-beschrijving komt (bijv. je Twitch-link). Leeg = geen regel.
+    TwitchRegel   = ''
     # Pushmeldingen op de telefoon via de gratis app ntfy (onderwerp wordt bij de eerste start gemaakt).
     NtfyTopic     = ''
-    # Muziek onder GTA-clips met echo: volume van het spelgeluid en van de muziek.
+    # Muziek onder clips: volume van het spelgeluid en van de muziek.
     GameVolume    = 0.35
     MuziekVolume  = 0.85
     MuziekIndex   = 0
-    # Zoveel GTA-clips met muziek wil de taak minstens klaar hebben staan; anders maakt hij er zelf bij.
+    # Zoveel clips met muziek wil de taak minstens klaar hebben staan; anders maakt hij er zelf bij.
     MinGtaKlaar   = 3
     # Laatst voorgestelde TikTok-inplantijd.
     TikTokLaatsteSlot = ''
     AutoGepauzeerd = $false
     AutoReden     = ''
 }
+# Instellingen van versie 4 (alleen gebruikt door playingparentsnl, waar de Clip-poster mee begon).
+$V4Cfg = @{
+    KanaalNaam = 'playingparentsnl'; Rotatie = @('GTA 6', 'Arma Reforger'); EchoDatums = @('2026-11-19'); MuziekGame = 'GTA 6'
+    KanaalId = 'UC0EU7Am-oiUnpg_yv9FHJkQ'; TwitchRegel = 'Live op Twitch: https://twitch.tv/playingparentsnl'
+    GameVerplicht = $true; OrigineelVerplicht = $true; Ingesteld = $true
+    Games = @(
+        [pscustomobject]@{ Naam = 'Arma Reforger'; Tags = @('armareforger', 'arma') },
+        [pscustomobject]@{ Naam = 'GTA 6'; Tags = @('gta6', 'gtavi') },
+        [pscustomobject]@{ Naam = 'Fall Guys'; Tags = @('fallguys') }
+    )
+}
 $script:Cfg = Load-Json $ConfigFile $null
-if (-not $script:Cfg -or -not ($script:Cfg.PSObject.Properties.Name -contains 'Versie') -or [int]$script:Cfg.Versie -lt 4) {
+$cfgVersie = 0
+if ($script:Cfg -and ($script:Cfg.PSObject.Properties.Name -contains 'Versie')) { $cfgVersie = [int]$script:Cfg.Versie }
+if (-not $script:Cfg -or $cfgVersie -lt 4) {
+    # Nieuwe installatie (of heel oude versie): beginnen met de standaardinstellingen.
     $old = $script:Cfg
-    $script:Cfg = $DefaultCfg
+    $script:Cfg = $DefaultCfg.PSObject.Copy()
     if ($old -and ($old.PSObject.Properties.Name -contains 'Privacy') -and $old.Privacy) { $script:Cfg.Privacy = [string]$old.Privacy }
+    Save-Json $ConfigFile $script:Cfg
+} elseif ($cfgVersie -eq 4) {
+    # Overstap van versie 4: die werkte alleen voor playingparentsnl. Wat al in config.json stond blijft staan;
+    # de nieuwe instellingen krijgen de waarden die in versie 4 vast in het programma zaten.
+    foreach ($k in $V4Cfg.Keys) {
+        if (-not ($script:Cfg.PSObject.Properties.Name -contains $k) -or $k -in 'Games', 'KanaalNaam', 'GameVerplicht', 'OrigineelVerplicht', 'MuziekGame', 'Ingesteld') { Set-Prop $script:Cfg $k $V4Cfg[$k] }
+    }
+    $script:Cfg.Versie = 5
     Save-Json $ConfigFile $script:Cfg
 }
 function Complete-Cfg { foreach ($p in $DefaultCfg.PSObject.Properties) { if (-not ($script:Cfg.PSObject.Properties.Name -contains $p.Name)) { Set-Prop $script:Cfg $p.Name $p.Value } } }
@@ -130,9 +162,26 @@ function Save-Cfg { Save-Json $ConfigFile $script:Cfg }
 if (-not $script:Cfg.NtfyTopic) {
     $chars = 'abcdefghijkmnpqrstuvwxyz23456789'.ToCharArray()
     $rnd = New-Object byte[] 12; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($rnd)
-    $script:Cfg.NtfyTopic = 'playingparentsnl-' + (-join ($rnd | ForEach-Object { $chars[$_ % $chars.Length] }))
+    $pre = ([string]$script:Cfg.KanaalNaam).ToLower() -replace '[^a-z0-9]', ''
+    if (-not $pre) { $pre = 'clipposter' }
+    $script:Cfg.NtfyTopic = $pre + '-' + (-join ($rnd | ForEach-Object { $chars[$_ % $chars.Length] }))
     Save-Cfg
 }
+# Naam voor in meldingen: de kanaalnaam, of "je kanaal".
+function Get-KanaalTekst { if ([string]$script:Cfg.KanaalNaam) { return [string]$script:Cfg.KanaalNaam } else { return 'je eigen kanaal' } }
+
+# Mappen (de clipsmap is instelbaar).
+function Set-Folders {
+    $m = [string]$script:Cfg.ClipsMap
+    if (-not $m -or $env:CLIPPOSTER_TESTROOT) { $m = Join-Path $Desktop 'Clips voor socials' }
+    $script:SocialsDir = $m
+    $script:VandaagDir = Join-Path $m 'Vandaag posten'
+    $script:GepostDir  = Join-Path $m 'Gepost'
+    $script:MuziekDir  = Join-Path $m 'Muziek'
+    $script:InstaDir   = Join-Path $m 'Instagram posten'
+    $script:AiDir      = Join-Path $VideosDir 'AI-clips'
+}
+Set-Folders
 
 $script:PhoneLog = @()
 # Pushmelding naar de telefoon (app "ntfy", abonneer op het onderwerp uit de knop "Telefoon").
@@ -150,7 +199,7 @@ function Send-PhoneCore([string]$title, [string]$msg, [string]$prio = 'default')
 # Opnieuw inlezen: het venster en de automatische taak kunnen allebei iets veranderd hebben.
 function Reload-Cfg {
     $c = Load-Json $ConfigFile $null
-    if ($c -and ($c.PSObject.Properties.Name -contains 'Versie') -and [int]$c.Versie -ge 4) { $script:Cfg = $c; Complete-Cfg }
+    if ($c -and ($c.PSObject.Properties.Name -contains 'Versie') -and [int]$c.Versie -ge 5) { $script:Cfg = $c; Complete-Cfg; Set-Folders }
 }
 
 # ---------------------------------------------------------------- wat al gepost is (per moment uit de stream)
@@ -176,7 +225,8 @@ function Reload-State {
     $script:Done = @{}
     $saved = Load-Status
     if ($saved) { foreach ($p in $saved.PSObject.Properties) { $script:Done[$p.Name] = $p.Value } }
-    foreach ($k in $AlEerderGepost) {
+    # (Alleen voor het kanaal waar de Clip-poster mee begon.)
+    foreach ($k in $(if ($script:Cfg.KanaalId -eq 'UC0EU7Am-oiUnpg_yv9FHJkQ') { $AlEerderGepost } else { @() })) {
         if (-not $script:Done.ContainsKey($k)) { $script:Done[$k] = [pscustomobject]@{ youtube = 'al eerder gepost'; kanaal = ''; tiktok = $true; datum = ''; verkeerd = '' } }
     }
 }
@@ -239,11 +289,31 @@ function Get-CleanTitle([string]$base) {
     return $t.Trim()
 }
 
+# De game herkennen aan de hashtags (instelbaar bij Instellingen).
 function Get-GameFromText([string]$text) {
-    if ($text -match '(?i)#armareforger\b|#arma\b') { return 'Arma Reforger' }
-    if ($text -match '(?i)#gta6\b|#gtavi\b') { return 'GTA 6' }
-    if ($text -match '(?i)#fallguys\b') { return 'Fall Guys' }
+    foreach ($g in @($script:Cfg.Games)) {
+        if (-not $g -or -not $g.Naam) { continue }
+        foreach ($t in @($g.Tags)) {
+            $t = ([string]$t).Trim().TrimStart('#')
+            if ($t -and $text -match ('(?i)#' + [regex]::Escape($t) + '\b')) { return [string]$g.Naam }
+        }
+    }
     return ''
+}
+# De game uit een bestandsnaam (bijv. "12 - Titel - GTA 6.mp4").
+function Get-GameFromName([string]$name) {
+    $n = ($name -replace '[^a-zA-Z0-9]', '').ToLower()
+    foreach ($g in @($script:Cfg.Games)) {
+        if (-not $g -or -not $g.Naam) { continue }
+        $cands = @(([string]$g.Naam -replace '[^a-zA-Z0-9]', '').ToLower()) + @($g.Tags | ForEach-Object { ([string]$_).Trim().TrimStart('#').ToLower() })
+        foreach ($c in $cands) { if ($c.Length -ge 3 -and $n.Contains($c)) { return [string]$g.Naam } }
+    }
+    return ''
+}
+function Get-GameProbleem {
+    $tags = @(@($script:Cfg.Games) | ForEach-Object { @($_.Tags) | Select-Object -First 1 } | Where-Object { $_ } | ForEach-Object { '#' + ([string]$_).TrimStart('#') })
+    if ($tags.Count) { return ('game onbekend (geen {0} in de tekst)' -f ($tags -join ' of ')) }
+    return 'game onbekend (stel bij Instellingen in aan welke hashtags je games herkend worden)'
 }
 
 # Korte titel uit de eerste zin van de tekst (zonder emoji en hashtags), met de game erachter.
@@ -383,14 +453,17 @@ function Get-AllClips {
         $c.Text = $parts.Text
         $c.Key = Get-MomentKey $parts.Origineel
         if (-not $c.Key) { $c.Key = Get-MomentKey $f.BaseName }
-        if (-not $c.Key) { $c.Key = 'vandaag:' + $f.BaseName; $c.Probleem = 'geen regel "Origineel: Replay ..." in de .txt (anders kan hij dubbel gepost worden)' }
+        if (-not $c.Key) {
+            $c.Key = 'vandaag:' + $f.BaseName
+            if ($script:Cfg.OrigineelVerplicht -and -not $c.Probleem) { $c.Probleem = 'geen regel "Origineel: Replay ..." in de .txt (anders kan hij dubbel gepost worden)' }
+        }
         $c.Game = Get-GameFromText $c.Text
-        if (-not $c.Game) { if ($f.BaseName -match '(?i)arma') { $c.Game = 'Arma Reforger' } elseif ($f.BaseName -match '(?i)gta') { $c.Game = 'GTA 6' } }
+        if (-not $c.Game) { $c.Game = Get-GameFromName $f.BaseName }
         $c.Title = $parts.Title
         if (-not $c.Title -and $ai.ContainsKey($c.Key)) { $c.Title = '{0} | {1}' -f $ai[$c.Key].Title, $ai[$c.Key].Game }
         if (-not $c.Title) { $c.Title = Get-CleanTitle $f.BaseName }
         if (-not $c.Text -and -not $c.Probleem) { $c.Probleem = 'tekst is leeg' }
-        if (-not $c.Game -and -not $c.Probleem) { $c.Probleem = 'game onbekend (geen #gta6 of #armareforger in de tekst)' }
+        if (-not $c.Game -and -not $c.Probleem -and $script:Cfg.GameVerplicht) { $c.Probleem = Get-GameProbleem }
         $list.Add($c); $keys[$c.Key] = $true
     }
 
@@ -410,11 +483,13 @@ function Get-AllClips {
         # Alleen als er geen tekst is, wordt de naam uit Videos\AI-clips gebruikt.
         if ($c.Text) { $c.Title = Get-TitleFromText $c.Text $c.Game }
         elseif ($ai.ContainsKey($c.Key)) { $c.Title = '{0} | {1}' -f $ai[$c.Key].Title, $c.Game }
-        if (-not $c.Game -and -not $c.Probleem) { $c.Probleem = 'game onbekend (geen #gta6 of #armareforger in de tekst)' }
+        if (-not $c.Game -and -not $c.Probleem -and $script:Cfg.GameVerplicht) { $c.Probleem = Get-GameProbleem }
         if (-not $c.Text -and -not $c.Probleem) { $c.Probleem = 'tekst is leeg' }
         $datum = $c.Key.Substring(0, [math]::Min(10, $c.Key.Length))
-        # Echo-stream: GTA-clips, en voor de zekerheid ook clips waarvan de game niet uit de tekst blijkt.
-        if ($echo -contains $datum -and ($c.Game -eq 'GTA 6' -or -not (Get-GameFromText $c.Text))) { $c.MuziekNodig = $true }
+        # Stream met slecht geluid (bijv. echo): clips van de muziek-game, en voor de zekerheid ook clips
+        # waarvan de game niet uit de tekst blijkt, gaan pas met muziek eronder.
+        $mg = [string]$script:Cfg.MuziekGame
+        if ($echo -contains $datum -and ((-not $mg) -or $c.Game -eq $mg -or -not (Get-GameFromText $c.Text))) { $c.MuziekNodig = $true }
         $list.Add($c); $keys[$c.Key] = $true
     }
 
@@ -430,6 +505,12 @@ function Get-AllClips {
 }
 
 $script:ExtraElke = 6
+# Games die om en om gaan: de ingestelde rotatie, of anders alle ingestelde games.
+function Get-Rotatie {
+    $r = @(@($script:Cfg.Rotatie) | Where-Object { $_ })
+    if (-not $r.Count) { $r = @(@($script:Cfg.Games) | Where-Object { $_ -and $_.Naam } | ForEach-Object { [string]$_.Naam }) }
+    return $r
+}
 function Get-SortKey($c) { return ('{0}|{1:D4}' -f $c.Key, $c.Nr) }
 
 # De wachtrij voor YouTube: oud naar nieuw per game, om en om volgens de rotatie.
@@ -440,11 +521,11 @@ function Get-Queue($all) {
         if (-not $perGame.Contains($c.Game)) { $perGame[$c.Game] = New-Object System.Collections.Generic.Queue[object] }
         $perGame[$c.Game].Enqueue($c)
     }
-    # Hoofdrotatie (GTA 6 en Arma Reforger om en om). Andere games (bijv. Fall Guys) komen
+    # Hoofdrotatie (bijv. GTA 6 en Arma Reforger om en om). Andere games (bijv. Fall Guys) komen
     # er af en toe tussen: één na elke $ExtraElke posts uit de hoofdrotatie.
     $ExtraElke = $script:ExtraElke
     $rot = New-Object System.Collections.Generic.List[string]
-    foreach ($g in @($script:Cfg.Rotatie)) { if ($perGame.Contains($g)) { $rot.Add($g) } }
+    foreach ($g in @(Get-Rotatie)) { if ($perGame.Contains($g)) { $rot.Add($g) } }
     $extra = New-Object System.Collections.Generic.Queue[object]
     foreach ($g in $perGame.Keys) { if (-not $rot.Contains($g)) { foreach ($c in $perGame[$g]) { $extra.Enqueue($c) } } }
     $main = New-Object System.Collections.Generic.List[object]
@@ -488,14 +569,20 @@ function Get-Checks($all) {
     }
     foreach ($c in ($all | Where-Object { $_.Probleem })) { $msgs.Add(('Overgeslagen: {0} ({1})' -f (Split-Path $c.Mp4 -Leaf), $c.Probleem)) }
     $m = @($all | Where-Object { $_.MuziekNodig -and -not $_.Gepost })
-    if ($m.Count) { $msgs.Add(('{0} GTA-clips van een stream met echo worden overgeslagen tot er muziek onder zit (zet ze met muziek in Vandaag posten).' -f $m.Count)) }
+    if ($m.Count) { $msgs.Add(('{0} clips van een stream met slecht geluid worden overgeslagen tot er muziek onder zit (knop "Muziek eronder").' -f $m.Count)) }
     $per = @{}
     foreach ($c in @(Get-Queue $all)) { if (-not $per.ContainsKey($c.Game)) { $per[$c.Game] = 0 }; $per[$c.Game]++ }
     $perDag = [math]::Max(1, @($script:Cfg.Tijden).Count)
-    foreach ($g in @($script:Cfg.Rotatie)) {
+    $rotatie = @(Get-Rotatie)
+    if (-not $rotatie.Count) {
+        $n = @(Get-Queue $all).Count
+        if ($n -eq 0) { $msgs.Add('Er staan geen clips meer klaar om te posten.') }
+        elseif ([math]::Floor($n / $perDag) -le 3) { $msgs.Add(('Nog maar {0} clips klaar (ongeveer {1} dagen). Zet op tijd nieuwe clips klaar.' -f $n, [math]::Max(1, [math]::Floor($n / $perDag)))) }
+    }
+    foreach ($g in $rotatie) {
         $n = 0; if ($per.ContainsKey($g)) { $n = $per[$g] }
-        $dagen = [math]::Floor($n * @($script:Cfg.Rotatie).Count / $perDag)
-        if ($n -eq 0) { $msgs.Add(('Er staan geen {0}-clips meer klaar. Er wordt nu alleen de andere game gepost.' -f $g)) }
+        $dagen = [math]::Floor($n * $rotatie.Count / $perDag)
+        if ($n -eq 0) { $msgs.Add(('Er staan geen {0}-clips meer klaar. De andere games gaan gewoon door.' -f $g)) }
         elseif ($dagen -le 3) { $msgs.Add(('Nog maar {0} {1}-clips klaar (ongeveer {2} dagen). Zet op tijd nieuwe clips klaar.' -f $n, $g, [math]::Max(1, $dagen))) }
     }
     $klaar = @($all | Where-Object { $_.Gepost -and $_.TikTok })
@@ -536,7 +623,7 @@ function Invoke-Login($client) {
     }
     $qs = ($q.GetEnumerator() | ForEach-Object { '{0}={1}' -f $_.Key, [Uri]::EscapeDataString([string]$_.Value) }) -join '&'
     Start-Process ('https://accounts.google.com/o/oauth2/v2/auth?' + $qs)
-    Set-Status 'Log in bij Google in je browser. Kies het kanaal playingparentsnl en geef toestemming...'
+    Set-Status ('Log in bij Google in je browser. Kies het kanaal {0} en geef toestemming...' -f (Get-KanaalTekst))
     $first = $null
     $end = [DateTime]::UtcNow.AddMinutes(5)
     try {
@@ -649,10 +736,10 @@ function Complete-Upload([string]$key, [string]$game, [string]$out, [string]$wan
     Reload-State; Reload-Cfg
     $s = Get-State $key
     if ($script:Cfg.KanaalId -and $parts[3] -and $parts[3] -ne $script:Cfg.KanaalId) {
-        # Verkeerd kanaal: NIET als gepost tellen, zodat de clip in de wachtrij blijft voor playingparentsnl.
+        # Verkeerd kanaal: NIET als gepost tellen, zodat de clip in de wachtrij blijft voor het goede kanaal.
         $s.verkeerd = $parts[1]; Save-Status
         $script:Cfg.AutoGepauzeerd = $true
-        $script:Cfg.AutoReden = ('Upload ging naar kanaal "{0}" in plaats van playingparentsnl (video https://youtube.com/shorts/{1}). Klik op YouTube instellen en kies het goede kanaal.' -f $parts[4], $parts[1])
+        $script:Cfg.AutoReden = ('Upload ging naar kanaal "{0}" in plaats van {1} (video https://youtube.com/shorts/{2}). Klik op YouTube koppelen en kies het goede kanaal.' -f $parts[4], (Get-KanaalTekst), $parts[1])
         Save-Cfg
         $msg = 'LET OP: ' + $script:Cfg.AutoReden + ' Posten staat op pauze.'
         Write-Log $msg
@@ -661,7 +748,12 @@ function Complete-Upload([string]$key, [string]$game, [string]$out, [string]$wan
     }
     $s.youtube = $parts[1]; $s.kanaal = $parts[3]; $s.datum = (Get-Date -Format 'yyyy-MM-dd HH:mm')
     Save-Status
-    if (@($script:Cfg.Rotatie) -contains $game) { $script:Cfg.LaatsteGame = $game; $script:Cfg.SindsExtra = [int]$script:Cfg.SindsExtra + 1 }
+    # Eerste geslaagde upload: dit kanaal onthouden, zodat een upload naar een ander kanaal later opvalt.
+    if (-not $script:Cfg.KanaalId -and $parts[3]) {
+        $script:Cfg.KanaalId = $parts[3]
+        if (-not $script:Cfg.KanaalNaam -and $parts[4]) { $script:Cfg.KanaalNaam = $parts[4] }
+    }
+    if (@(Get-Rotatie) -contains $game) { $script:Cfg.LaatsteGame = $game; $script:Cfg.SindsExtra = [int]$script:Cfg.SindsExtra + 1 }
     else { $script:Cfg.SindsExtra = 0 }
     Save-Cfg
     $msg = 'Op YouTube gezet ({0}) op kanaal "{1}": https://youtube.com/shorts/{2}' -f $parts[2], $parts[4], $parts[1]
@@ -692,12 +784,14 @@ function Test-FileReady([string]$path) {
 function Invoke-AutoPost {
     Reload-Cfg
     if ($script:Cfg.AutoGepauzeerd) { Write-Log ('Automatisch posten staat op pauze: ' + $script:Cfg.AutoReden); return }
-    # Bijna geen GTA-clips met muziek meer? Dan eerst twee echo-clips van muziek voorzien.
+    # Bijna geen clips van de muziek-game meer klaar? Dan eerst twee clips van muziek voorzien.
     try {
-        $gtaKlaar = @(Get-Queue (Get-AllClips) | Where-Object { $_.Game -eq 'GTA 6' }).Count
-        if ($gtaKlaar -lt [int]$script:Cfg.MinGtaKlaar -and -not $Proef -and (Find-Ffmpeg)) {
+        $mg = [string]$script:Cfg.MuziekGame
+        $wacht = @(Get-AllClips | Where-Object { $_.MuziekNodig -and -not $_.Gepost -and -not $_.Probleem }).Count
+        $klaarMg = @(Get-Queue (Get-AllClips) | Where-Object { (-not $mg) -or $_.Game -eq $mg }).Count
+        if ($wacht -and $klaarMg -lt [int]$script:Cfg.MinGtaKlaar -and -not $Proef -and (Find-Ffmpeg)) {
             $n = Invoke-MusicBatch 2
-            if ($n) { Write-Log ('{0} GTA-clips van muziek voorzien.' -f $n) }
+            if ($n) { Write-Log ('{0} clips van muziek voorzien.' -f $n) }
         }
     } catch { Write-Log ('Muziek toevoegen mislukt: ' + $_.Exception.Message) }
     $all = Get-AllClips
@@ -744,7 +838,7 @@ function Set-AutoTask([bool]$on) {
     }
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
     $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description 'Zet op vaste tijden de volgende clip van playingparentsnl op YouTube.' -Force | Out-Null
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description 'Clip-poster: zet op vaste tijden de volgende clip op YouTube.' -Force | Out-Null
     $script:Cfg.AutoGepauzeerd = $false; $script:Cfg.AutoReden = ''; Save-Cfg
     Write-Log ('Automatisch posten aangezet: ' + (@($script:Cfg.Tijden) -join ', '))
 }
@@ -772,7 +866,7 @@ function Move-ToGepost($c) {
 }
 
 
-# ---------------------------------------------------------------- muziek onder GTA-clips met echo (ffmpeg)
+# ---------------------------------------------------------------- muziek onder clips (ffmpeg)
 function Find-Ffmpeg {
     foreach ($n in 'ffmpeg.exe', 'ffmpeg') { $cmd = Get-Command $n -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if ($cmd) { return $cmd.Source } }
     $roots = @()
@@ -867,9 +961,11 @@ function Add-MusicToClip($c, [string]$ffmpeg) {
     $i = [int]$script:Cfg.MuziekIndex % $tracks.Count
     $track = $tracks[$i]
     $nr = Get-NextVandaagNr
-    $game = if ($c.Game) { $c.Game } else { 'GTA 6' }
-    $title = $c.Title -replace ('\s*\|\s*' + [regex]::Escape($game) + '\s*$'), ''
-    $base = '{0} - {1} - {2}' -f $nr, (Get-SafeFileName $title), $game
+    $game = if ($c.Game) { $c.Game } elseif ($script:Cfg.MuziekGame) { [string]$script:Cfg.MuziekGame } else { '' }
+    $title = $c.Title
+    if ($game) { $title = $title -replace ('\s*\|\s*' + [regex]::Escape($game) + '\s*$'), '' }
+    $base = '{0} - {1}' -f $nr, (Get-SafeFileName $title)
+    if ($game) { $base += ' - ' + (Get-SafeFileName $game) }
     $out = Join-Path $VandaagDir ($base + '.mp4')
     $tmpOut = Join-Path $SocialsDir ($base + '.bezig.mp4')   # buiten Vandaag posten, zodat een half bestand nooit in de rij komt
     $gv = ([double]$script:Cfg.GameVolume).ToString([Globalization.CultureInfo]::InvariantCulture)
@@ -1010,133 +1106,448 @@ if ($Auto) { Invoke-AutoPost; return }
 if ($GeenVenster) { return }   # alleen de functies laden (voor testen)
 
 # ---------------------------------------------------------------- venster
+# Kleuren en lettertypes (donker thema)
+$C = @{
+    Bg      = [System.Drawing.Color]::FromArgb(15, 17, 23)
+    Card    = [System.Drawing.Color]::FromArgb(24, 27, 36)
+    Input   = [System.Drawing.Color]::FromArgb(32, 36, 48)
+    Hover   = [System.Drawing.Color]::FromArgb(44, 49, 64)
+    Sel     = [System.Drawing.Color]::FromArgb(40, 36, 66)
+    Line    = [System.Drawing.Color]::FromArgb(38, 42, 56)
+    Text    = [System.Drawing.Color]::FromArgb(232, 234, 240)
+    Muted   = [System.Drawing.Color]::FromArgb(150, 158, 178)
+    Accent  = [System.Drawing.Color]::FromArgb(139, 92, 246)
+    Accent2 = [System.Drawing.Color]::FromArgb(124, 58, 237)
+    Red     = [System.Drawing.Color]::FromArgb(220, 38, 38)
+    Green   = [System.Drawing.Color]::FromArgb(22, 163, 74)
+    Blue    = [System.Drawing.Color]::FromArgb(37, 99, 235)
+    Amber   = [System.Drawing.Color]::FromArgb(245, 158, 11)
+    Black   = [System.Drawing.Color]::FromArgb(9, 9, 11)
+}
+$F = @{
+    App    = New-Object System.Drawing.Font('Segoe UI Semibold', 17)
+    Head   = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
+    Body   = New-Object System.Drawing.Font('Segoe UI', 10)
+    Small  = New-Object System.Drawing.Font('Segoe UI', 8.75)
+    Badge  = New-Object System.Drawing.Font('Segoe UI Semibold', 8)
+    Big    = New-Object System.Drawing.Font('Segoe UI Semibold', 13)
+    Btn    = New-Object System.Drawing.Font('Segoe UI Semibold', 9.75)
+}
+$GamePalette = @(
+    [System.Drawing.Color]::FromArgb(236, 72, 153), [System.Drawing.Color]::FromArgb(34, 197, 94),
+    [System.Drawing.Color]::FromArgb(59, 130, 246), [System.Drawing.Color]::FromArgb(245, 158, 11),
+    [System.Drawing.Color]::FromArgb(168, 85, 247), [System.Drawing.Color]::FromArgb(20, 184, 166),
+    [System.Drawing.Color]::FromArgb(239, 68, 68)
+)
+function Get-GameColor([string]$name) {
+    if (-not $name) { return [System.Drawing.Color]::FromArgb(100, 108, 128) }
+    $i = 0; foreach ($g in @($script:Cfg.Games)) { if ($g.Naam -eq $name) { return $GamePalette[$i % $GamePalette.Count] }; $i++ }
+    $sum = 0; foreach ($ch in $name.ToCharArray()) { $sum += [int]$ch }
+    return $GamePalette[$sum % $GamePalette.Count]
+}
+$script:Brushes = @{}
+function Get-Brush($color) {
+    $k = $color.ToArgb()
+    if (-not $script:Brushes.ContainsKey($k)) { $script:Brushes[$k] = New-Object System.Drawing.SolidBrush($color) }
+    return $script:Brushes[$k]
+}
+function New-RoundPath([System.Drawing.Rectangle]$r, [int]$rad) {
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $d = $rad * 2
+    $p.AddArc($r.X, $r.Y, $d, $d, 180, 90)
+    $p.AddArc($r.Right - $d, $r.Y, $d, $d, 270, 90)
+    $p.AddArc($r.Right - $d, $r.Bottom - $d, $d, $d, 0, 90)
+    $p.AddArc($r.X, $r.Bottom - $d, $d, $d, 90, 90)
+    $p.CloseFigure()
+    return $p
+}
+# Afgeronde hoeken voor knoppen en kaarten.
+function Set-Round($ctrl, [int]$rad) {
+    $apply = {
+        param($s, $e)
+        if ($s.Width -lt 2 -or $s.Height -lt 2) { return }
+        $s.Region = New-Object System.Drawing.Region((New-RoundPath (New-Object System.Drawing.Rectangle(0, 0, $s.Width, $s.Height)) $s.Tag))
+    }
+    $ctrl.Tag = $rad
+    $ctrl.Add_Resize($apply)
+    & $apply $ctrl $null
+}
+function Get-Lighter($c, [int]$n) { return [System.Drawing.Color]::FromArgb([math]::Min(255, $c.R + $n), [math]::Min(255, $c.G + $n), [math]::Min(255, $c.B + $n)) }
+function New-Btn($parent, [string]$text, [int]$x, [int]$y, [int]$w, [int]$h, $color, $font) {
+    $b = New-Object System.Windows.Forms.Button
+    $b.Text = $text; $b.Location = New-Object System.Drawing.Point($x, $y); $b.Size = New-Object System.Drawing.Size($w, $h)
+    $b.FlatStyle = 'Flat'; $b.FlatAppearance.BorderSize = 0; $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    if (-not $color) { $color = $C.Input }
+    $b.BackColor = $color; $b.ForeColor = [System.Drawing.Color]::White
+    $b.FlatAppearance.MouseOverBackColor = (Get-Lighter $color 22)
+    $b.FlatAppearance.MouseDownBackColor = (Get-Lighter $color 40)
+    $b.Font = $(if ($font) { $font } else { $F.Btn })
+    $b.UseVisualStyleBackColor = $false
+    $parent.Controls.Add($b); Set-Round $b 8
+    return $b
+}
+function New-Lbl($parent, [string]$text, [int]$x, [int]$y, $font, $color) {
+    $l = New-Object System.Windows.Forms.Label
+    $l.Text = $text; $l.Location = New-Object System.Drawing.Point($x, $y); $l.AutoSize = $true
+    $l.Font = $(if ($font) { $font } else { $F.Small }); $l.ForeColor = $(if ($color) { $color } else { $C.Muted }); $l.BackColor = [System.Drawing.Color]::Transparent
+    $parent.Controls.Add($l); return $l
+}
+function New-Card($parent, [int]$x, [int]$y, [int]$w, [int]$h) {
+    $p = New-Object System.Windows.Forms.Panel
+    $p.Location = New-Object System.Drawing.Point($x, $y); $p.Size = New-Object System.Drawing.Size($w, $h); $p.BackColor = $C.Card
+    $parent.Controls.Add($p); Set-Round $p 12
+    return $p
+}
+function Set-Input($t) { $t.BackColor = $C.Input; $t.ForeColor = $C.Text; $t.BorderStyle = 'FixedSingle'; $t.Font = $F.Body }
+
+# Schermafbeelding maken (alleen voor de website/handleiding, via CLIPPOSTER_SCREENSHOT).
+function Save-Shot($frm, [string]$path) {
+    $frm.Activate(); $frm.Refresh(); [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 400; [System.Windows.Forms.Application]::DoEvents()
+    $b = $frm.Bounds
+    $bmp = New-Object System.Drawing.Bitmap($b.Width, $b.Height)
+    if ($env:CLIPPOSTER_SHOT_SCREEN) {
+        $gr = [System.Drawing.Graphics]::FromImage($bmp); $gr.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size); $gr.Dispose()
+    } else { $frm.DrawToBitmap($bmp, (New-Object System.Drawing.Rectangle(0, 0, $b.Width, $b.Height))) }
+    $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+}
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Clip-poster - playingparentsnl'
-$form.Size = New-Object System.Drawing.Size(1060, 770)
+$form.Text = 'Clip-poster'
+$form.ClientSize = New-Object System.Drawing.Size(1180, 770)
+$form.MinimumSize = New-Object System.Drawing.Size(1100, 760)
 $form.StartPosition = 'CenterScreen'
-$form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+$form.BackColor = $C.Bg; $form.ForeColor = $C.Text
+$form.Font = $F.Body
 
-$cmbView = New-Object System.Windows.Forms.ComboBox
-$cmbView.DropDownStyle = 'DropDownList'
-[void]$cmbView.Items.AddRange(@('Wachtrij YouTube (in volgorde)', 'Nog naar TikTok', 'Overgeslagen (muziek nodig / probleem)', 'Alles'))
-$cmbView.Location = New-Object System.Drawing.Point(15, 12); $cmbView.Size = New-Object System.Drawing.Size(480, 28)
-$form.Controls.Add($cmbView)
+# --- kop
+$head = New-Object System.Windows.Forms.Panel
+$head.Dock = 'Top'; $head.Height = 76; $head.BackColor = $C.Card
+$form.Controls.Add($head)
+$logo = New-Object System.Windows.Forms.Panel
+$logo.Location = New-Object System.Drawing.Point(20, 18); $logo.Size = New-Object System.Drawing.Size(40, 40); $logo.BackColor = $C.Accent
+$head.Controls.Add($logo); Set-Round $logo 10
+$logo.Add_Paint({
+    param($s, $e)
+    $e.Graphics.SmoothingMode = 'AntiAlias'
+    $pts = [System.Drawing.Point[]]@((New-Object System.Drawing.Point(15, 11)), (New-Object System.Drawing.Point(29, 20)), (New-Object System.Drawing.Point(15, 29)))
+    $e.Graphics.FillPolygon((Get-Brush ([System.Drawing.Color]::White)), $pts)
+})
+$lblApp = New-Lbl $head 'Clip-poster' 70 12 $F.App $C.Text
+$lblSub = New-Lbl $head '' 73 46 $F.Small $C.Muted
+$pill = New-Object System.Windows.Forms.Label
+$pill.AutoSize = $false; $pill.Size = New-Object System.Drawing.Size(270, 34); $pill.TextAlign = 'MiddleCenter'
+$pill.Font = $F.Btn; $pill.ForeColor = [System.Drawing.Color]::White; $pill.Anchor = 'Top,Right'
+$pill.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - 290), 21)
+$head.Controls.Add($pill); Set-Round $pill 17
 
+# --- lijst met clips (links)
+$cardL = New-Card $form 16 92 540 596
+$cardL.Anchor = 'Top,Bottom,Left'
+$script:View = 0
+$viewBtns = @()
+$vx = 12
+foreach ($v in @('Wachtrij', 'Nog naar TikTok', 'Overgeslagen', 'Alles')) {
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($v, $F.Btn).Width + 26
+    $b = New-Btn $cardL $v $vx 12 $w 32 $C.Input $F.Btn
+    $viewBtns += $b; $vx += $w + 6
+}
 $lst = New-Object System.Windows.Forms.ListBox
-$lst.Location = New-Object System.Drawing.Point(15, 45); $lst.Size = New-Object System.Drawing.Size(480, 500)
-$lst.HorizontalScrollbar = $true
-$form.Controls.Add($lst)
+$lst.Location = New-Object System.Drawing.Point(8, 54); $lst.Size = New-Object System.Drawing.Size(524, 534)
+$lst.Anchor = 'Top,Bottom,Left,Right'
+$lst.BorderStyle = 'None'; $lst.BackColor = $C.Card; $lst.ForeColor = $C.Text
+$lst.DrawMode = 'OwnerDrawFixed'; $lst.ItemHeight = 58; $lst.IntegralHeight = $false
+$cardL.Controls.Add($lst)
+$lblEmpty = New-Lbl $cardL '' 24 80 $F.Body $C.Muted
+$lblEmpty.AutoSize = $false; $lblEmpty.Size = New-Object System.Drawing.Size(490, 120); $lblEmpty.BackColor = $C.Card
 
-$lblTitle = New-Object System.Windows.Forms.Label; $lblTitle.Text = 'Titel (YouTube, max. 100 tekens)'
-$lblTitle.Location = New-Object System.Drawing.Point(515, 12); $lblTitle.AutoSize = $true
-$form.Controls.Add($lblTitle)
+$lst.Add_DrawItem({
+    param($s, $e)
+    if ($e.Index -lt 0 -or $e.Index -ge @($script:Shown).Count) { return }
+    $c = @($script:Shown)[$e.Index]
+    $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'
+    $r = $e.Bounds
+    $sel = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0
+    $g.FillRectangle((Get-Brush $C.Card), $r)
+    $inner = New-Object System.Drawing.Rectangle(($r.X + 2), ($r.Y + 3), ($r.Width - 6), ($r.Height - 6))
+    if ($sel) { $g.FillPath((Get-Brush $C.Sel), (New-RoundPath $inner 8)) }
+    $x = $r.X + 12
+    if ($script:View -eq 0) {
+        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]($e.Index + 1), $F.Head, (New-Object System.Drawing.Rectangle($x, $r.Y, 28, $r.Height)), $C.Muted, [System.Windows.Forms.TextFormatFlags]'VerticalCenter,Right')
+        $x += 36
+    }
+    # game-label
+    $gname = if ($c.Game) { [string]$c.Game } else { 'Overig' }
+    $gw = [System.Windows.Forms.TextRenderer]::MeasureText($gname, $F.Badge).Width + 12
+    $br = New-Object System.Drawing.Rectangle($x, ($r.Y + 9), $gw, 19)
+    $g.FillPath((Get-Brush (Get-GameColor ([string]$c.Game))), (New-RoundPath $br 9))
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $gname, $F.Badge, $br, [System.Drawing.Color]::White, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter,NoPrefix,SingleLine')
+    # YT / TT
+    $chipX = $r.Right - 84
+    foreach ($ch in @(@('YT', $c.Gepost, $C.Red), @('TT', $c.TikTok, $C.Black))) {
+        $cr = New-Object System.Drawing.Rectangle($chipX, ($r.Y + 18), 32, 22)
+        $fill = if ($ch[1]) { $ch[2] } else { $C.Input }
+        $g.FillPath((Get-Brush $fill), (New-RoundPath $cr 6))
+        $fc = if ($ch[1]) { [System.Drawing.Color]::White } else { $C.Muted }
+        [System.Windows.Forms.TextRenderer]::DrawText($g, $ch[0], $F.Badge, $cr, $fc, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter')
+        $chipX += 38
+    }
+    # titel en tweede regel
+    $tx = $x + $gw + 8
+    $titleRect = New-Object System.Drawing.Rectangle($tx, ($r.Y + 7), ($chipX - 76 - $tx - 8), 22)
+    [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$c.Title, $F.Head, $titleRect, $C.Text, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine,VerticalCenter')
+    $sub = Split-Path $c.Mp4 -Leaf; $subColor = $C.Muted
+    if ($c.MuziekNodig) { $sub = 'Muziek nodig  -  ' + $sub; $subColor = $C.Amber }
+    elseif ($c.Probleem) { $sub = $c.Probleem; $subColor = $C.Amber }
+    $subRect = New-Object System.Drawing.Rectangle($x, ($r.Y + 32), ($chipX - 76 - $x - 8), 18)
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $sub, $F.Small, $subRect, $subColor, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine')
+    $g.FillRectangle((Get-Brush $C.Line), ($r.X + 12), ($r.Bottom - 1), ($r.Width - 24), 1)
+})
+
+# --- details en knoppen (rechts)
+$cardR = New-Card $form 572 92 592 596
+$cardR.Anchor = 'Top,Bottom,Left,Right'
+$null = New-Lbl $cardR 'TITEL  (YouTube, max. 100 tekens)' 20 16 $F.Badge $C.Muted
 $txtTitle = New-Object System.Windows.Forms.TextBox
-$txtTitle.Location = New-Object System.Drawing.Point(515, 35); $txtTitle.Size = New-Object System.Drawing.Size(510, 25); $txtTitle.MaxLength = 100
-$form.Controls.Add($txtTitle)
-
-$lblText = New-Object System.Windows.Forms.Label; $lblText.Text = 'Tekst met hashtags (beschrijving op YouTube, gekopieerd voor TikTok)'
-$lblText.Location = New-Object System.Drawing.Point(515, 68); $lblText.AutoSize = $true
-$form.Controls.Add($lblText)
+$txtTitle.Location = New-Object System.Drawing.Point(20, 36); $txtTitle.Size = New-Object System.Drawing.Size(552, 28); $txtTitle.MaxLength = 100
+$txtTitle.Anchor = 'Top,Left,Right'; Set-Input $txtTitle
+$cardR.Controls.Add($txtTitle)
+$null = New-Lbl $cardR 'TEKST MET HASHTAGS  (beschrijving op YouTube, gekopieerd voor TikTok)' 20 74 $F.Badge $C.Muted
 $txt = New-Object System.Windows.Forms.TextBox
 $txt.Multiline = $true; $txt.ScrollBars = 'Vertical'
-$txt.Location = New-Object System.Drawing.Point(515, 90); $txt.Size = New-Object System.Drawing.Size(510, 130)
-$form.Controls.Add($txt)
-
+$txt.Location = New-Object System.Drawing.Point(20, 94); $txt.Size = New-Object System.Drawing.Size(552, 118)
+$txt.Anchor = 'Top,Left,Right'; Set-Input $txt
+$cardR.Controls.Add($txt)
+$null = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $F.Badge $C.Muted
 $cmbPrivacy = New-Object System.Windows.Forms.ComboBox
-$cmbPrivacy.DropDownStyle = 'DropDownList'
+$cmbPrivacy.DropDownStyle = 'DropDownList'; $cmbPrivacy.FlatStyle = 'Flat'
+$cmbPrivacy.BackColor = $C.Input; $cmbPrivacy.ForeColor = $C.Text
 [void]$cmbPrivacy.Items.AddRange(@('openbaar', 'verborgen (unlisted)', 'privé'))
-$cmbPrivacy.Location = New-Object System.Drawing.Point(515, 228); $cmbPrivacy.Size = New-Object System.Drawing.Size(200, 25)
+$cmbPrivacy.Location = New-Object System.Drawing.Point(130, 220); $cmbPrivacy.Size = New-Object System.Drawing.Size(200, 28)
 $privacyMap = @{ 'openbaar' = 'public'; 'verborgen (unlisted)' = 'unlisted'; 'privé' = 'private' }
 $cmbPrivacy.SelectedIndex = [array]::IndexOf(@('public', 'unlisted', 'private'), [string]$script:Cfg.Privacy)
 if ($cmbPrivacy.SelectedIndex -lt 0) { $cmbPrivacy.SelectedIndex = 0 }
-$form.Controls.Add($cmbPrivacy)
+$cardR.Controls.Add($cmbPrivacy)
 
-function New-Btn([string]$text, [int]$x, [int]$y, [int]$w, [int]$h, $color) {
-    $b = New-Object System.Windows.Forms.Button
-    $b.Text = $text; $b.Location = New-Object System.Drawing.Point($x, $y); $b.Size = New-Object System.Drawing.Size($w, $h)
-    if ($color) { $b.BackColor = $color; $b.ForeColor = [System.Drawing.Color]::White; $b.FlatStyle = 'Flat' }
-    $form.Controls.Add($b); return $b
-}
-$btnNext  = New-Btn 'POST VOLGENDE  (YouTube + TikTok klaarzetten)' 515 262 510 55 ([System.Drawing.Color]::FromArgb(110, 40, 200))
-$btnYt    = New-Btn 'Alleen YouTube (gekozen clip)'   515 325 250 40 ([System.Drawing.Color]::FromArgb(204, 0, 0))
-$btnTt    = New-Btn 'TikTok klaarzetten (gekozen clip)' 775 325 250 40 ([System.Drawing.Color]::FromArgb(20, 20, 20))
-$btnTtDone= New-Btn 'Staat op TikTok: klaar'          515 372 250 40 ([System.Drawing.Color]::FromArgb(39, 174, 96))
-$btnClean = New-Btn 'Opruimen: geposte clips naar Gepost' 775 372 250 40 $null
-$btnRonde = New-Btn 'TIKTOK-RONDE: alle clips die nog naar TikTok moeten, een voor een' 515 420 510 42 ([System.Drawing.Color]::FromArgb(20, 20, 20))
-$btnAuto  = New-Btn '' 515 468 510 45 ([System.Drawing.Color]::FromArgb(0, 120, 200))
-$btnSetup = New-Btn 'YouTube instellen'  15 555 160 40 $null
-$btnCheck = New-Btn 'Controle'          185 555 150 40 $null
-$btnLog   = New-Btn 'Logboek'           345 555 150 40 $null
-$btnMusic = New-Btn 'Muziek eronder'     15 600 160 40 $null
-$btnStats = New-Btn 'Cijfers'           185 600 150 40 $null
-$btnPhone = New-Btn 'Telefoon'          345 600 150 40 $null
-
+$btnNext   = New-Btn $cardR 'Post volgende clip' 20 262 552 58 $C.Accent $F.Big
+$btnNext.Anchor = 'Top,Left,Right'
+$lblNext = New-Lbl $cardR '' 22 324 $F.Small $C.Muted
+$lblNext.AutoSize = $false; $lblNext.Size = New-Object System.Drawing.Size(552, 18); $lblNext.AutoEllipsis = $true
+$btnYt     = New-Btn $cardR 'Alleen YouTube (gekozen clip)' 20 348 272 40 $C.Red
+$btnTt     = New-Btn $cardR 'TikTok klaarzetten (gekozen clip)' 300 348 272 40 $C.Black
+$btnTtDone = New-Btn $cardR 'Staat op TikTok: klaar' 20 394 272 40 $C.Green
+$btnRonde  = New-Btn $cardR 'TikTok-ronde: alles een voor een' 300 394 272 40 $C.Black
+$btnAuto   = New-Btn $cardR '' 20 440 552 44 $C.Blue
+$btnAuto.Anchor = 'Top,Left,Right'
+$statusBox = New-Object System.Windows.Forms.Panel
+$statusBox.Location = New-Object System.Drawing.Point(20, 496); $statusBox.Size = New-Object System.Drawing.Size(552, 86); $statusBox.BackColor = $C.Input
+$statusBox.Anchor = 'Top,Bottom,Left,Right'
+$cardR.Controls.Add($statusBox); Set-Round $statusBox 8
 $status = New-Object System.Windows.Forms.Label
-$status.Location = New-Object System.Drawing.Point(515, 520); $status.Size = New-Object System.Drawing.Size(510, 125)
-$form.Controls.Add($status)
-$summary = New-Object System.Windows.Forms.Label
-$summary.Location = New-Object System.Drawing.Point(15, 652); $summary.Size = New-Object System.Drawing.Size(1010, 60)
-$form.Controls.Add($summary)
-function Set-Status([string]$t) { $status.Text = $t; [System.Windows.Forms.Application]::DoEvents() }
+$status.Dock = 'Fill'; $status.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
+$status.Font = $F.Small; $status.ForeColor = $C.Text; $status.BackColor = $C.Input
+$statusBox.Controls.Add($status)
+
+# --- onderbalk
+$bar = New-Object System.Windows.Forms.Panel
+$bar.Dock = 'Bottom'; $bar.Height = 66; $bar.BackColor = $C.Bg
+$form.Controls.Add($bar)
+$bx = 16
+$tools = @{}
+foreach ($t in @('Instellingen', 'YouTube koppelen', 'Clipsmap openen', 'Controle', 'Muziek eronder', 'Cijfers', 'Telefoon', 'Opruimen', 'Logboek')) {
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($t, $F.Btn).Width + 28
+    $tools[$t] = New-Btn $bar $t $bx 14 $w 36 $C.Card $F.Btn
+    $bx += $w + 8
+}
+$btnSettings = $tools['Instellingen']; $btnSetup = $tools['YouTube koppelen']; $btnFolder = $tools['Clipsmap openen']
+$btnCheck = $tools['Controle']; $btnMusic = $tools['Muziek eronder']; $btnStats = $tools['Cijfers']
+$btnPhone = $tools['Telefoon']; $btnClean = $tools['Opruimen']; $btnLog = $tools['Logboek']
+$tip = New-Object System.Windows.Forms.ToolTip
+$tip.SetToolTip($btnClean, 'Clips die op YouTube en TikTok staan naar de map Gepost verplaatsen')
+$tip.SetToolTip($btnMusic, 'Muziek onder clips zetten die dat nodig hebben (mp3-bestanden in de map Muziek)')
+$tip.SetToolTip($btnPhone, 'Meldingen op je telefoon met de gratis app ntfy')
+$tip.SetToolTip($btnCheck, 'Controleer volgorde, dubbele clips en ontbrekende teksten')
+
+function Set-Status([string]$t) {
+    $status.Text = $t
+    $status.ForeColor = $(if ($t -match '^LET OP|mislukt|Fout|lukt niet') { $C.Amber } else { $C.Text })
+    [System.Windows.Forms.Application]::DoEvents()
+}
 
 $script:All = @(); $script:Queue = @(); $script:Shown = @()
 function Update-AutoButton {
     $t = Get-AutoTask
-    if ($t) {
-        $extra = ''; if ($script:Cfg.AutoGepauzeerd) { $extra = '  (OP PAUZE)' }
-        $btnAuto.Text = ('Automatisch posten staat AAN: {0}{1}  -  klik om uit te zetten' -f (@($script:Cfg.Tijden) -join ', '), $extra)
+    $tijden = (@($script:Cfg.Tijden) -join ', ')
+    if ($t -and $script:Cfg.AutoGepauzeerd) {
+        $btnAuto.Text = 'Automatisch posten staat op PAUZE  -  klik om uit te zetten'
+        $pill.Text = 'Automatisch: op pauze'; $pill.BackColor = $C.Amber
+    } elseif ($t) {
+        $btnAuto.Text = ('Automatisch posten staat AAN ({0})  -  klik om uit te zetten' -f $tijden)
+        $pill.Text = 'Automatisch posten: aan'; $pill.BackColor = $C.Green
     } else {
-        $btnAuto.Text = ('Automatisch posten staat UIT  -  klik om aan te zetten ({0})' -f (@($script:Cfg.Tijden) -join ', '))
+        $btnAuto.Text = ('Automatisch posten aanzetten  ({0})' -f $tijden)
+        $pill.Text = 'Automatisch posten: uit'; $pill.BackColor = $C.Hover
     }
+    $btnAuto.BackColor = $(if ($t) { $C.Hover } else { $C.Blue })
+    $btnAuto.FlatAppearance.MouseOverBackColor = (Get-Lighter $btnAuto.BackColor 22)
 }
-function Format-Clip($c, [int]$n) {
-    $g = switch ($c.Game) { 'GTA 6' { 'GTA ' } 'Arma Reforger' { 'ARMA' } 'Fall Guys' { 'FALL' } default { '??? ' } }
-    $yt = if ($c.Gepost) { 'v' } else { '-' }; $tt = if ($c.TikTok) { 'v' } else { '-' }
-    $pre = if ($n -gt 0) { '{0,3}. ' -f $n } else { '' }
-    $suf = ''
-    if ($c.MuziekNodig) { $suf = '  (muziek nodig)' } elseif ($c.Probleem) { $suf = '  (' + $c.Probleem + ')' }
-    return ('{0}[{1}] [YT {2}] [TT {3}]  {4}{5}' -f $pre, $g, $yt, $tt, $c.Title, $suf)
+function Update-ViewButtons {
+    for ($i = 0; $i -lt $viewBtns.Count; $i++) {
+        $col = if ($i -eq $script:View) { $C.Accent2 } else { $C.Input }
+        $viewBtns[$i].BackColor = $col; $viewBtns[$i].FlatAppearance.MouseOverBackColor = (Get-Lighter $col 22)
+    }
 }
 function Refresh-List {
     $script:All = @(Get-AllClips)
     $script:Queue = @(Get-Queue $script:All)
     $sel = $lst.SelectedIndex
-    $lst.Items.Clear()
-    switch ($cmbView.SelectedIndex) {
+    switch ($script:View) {
         0 { $script:Shown = $script:Queue }
         1 { $script:Shown = @($script:All | Where-Object { $_.Gepost -and -not $_.TikTok -and $_.YouTubeId -ne 'al eerder gepost' } | Sort-Object { Get-SortKey $_ }) }
         2 { $script:Shown = @($script:All | Where-Object { -not $_.Gepost -and ($_.MuziekNodig -or $_.Probleem) } | Sort-Object { Get-SortKey $_ }) }
         default { $script:Shown = @($script:All | Sort-Object { Get-SortKey $_ }) }
     }
-    $n = 0
-    foreach ($c in $script:Shown) { $n++; [void]$lst.Items.Add((Format-Clip $c $(if ($cmbView.SelectedIndex -eq 0) { $n } else { 0 }))) }
-    if ($lst.Items.Count -gt 0) { $lst.SelectedIndex = [math]::Min([math]::Max($sel, 0), $lst.Items.Count - 1) }
-    else { $txt.Text = ''; $txtTitle.Text = '' }
+    $lst.BeginUpdate(); $lst.Items.Clear()
+    foreach ($c in $script:Shown) { [void]$lst.Items.Add([string]$c.Title) }
+    $lst.EndUpdate()
+    if ($lst.Items.Count -gt 0) { $lst.SelectedIndex = [math]::Min([math]::Max($sel, 0), $lst.Items.Count - 1); $lblEmpty.Visible = $false }
+    else {
+        $txt.Text = ''; $txtTitle.Text = ''
+        $lblEmpty.Text = switch ($script:View) {
+            0 { "Geen clips in de wachtrij.`n`nZet een video met een .txt-bestand (zelfde naam, met de tekst en hashtags) in:`n" + $VandaagDir }
+            1 { 'Alles wat op YouTube staat, staat ook op TikTok.' }
+            2 { 'Er worden geen clips overgeslagen.' }
+            default { "Nog geen clips gevonden in:`n" + $SocialsDir }
+        }
+        $lblEmpty.Visible = $true; $lblEmpty.BringToFront()
+    }
     $tiktok = @($script:All | Where-Object { $_.Gepost -and -not $_.TikTok -and $_.YouTubeId -ne 'al eerder gepost' }).Count
     $skip = @($script:All | Where-Object { -not $_.Gepost -and ($_.MuziekNodig -or $_.Probleem) }).Count
-    $volgende = if ($script:Queue.Count) { $script:Queue[0].Title } else { '(geen)' }
-    $laatste = ''
-    if (Test-Path -LiteralPath $LogFile) { $laatste = [string](Get-Content -LiteralPath $LogFile -Tail 1 -Encoding UTF8) }
-    $summary.Text = ('Wachtrij YouTube: {0} clips  |  nog naar TikTok: {1}  |  overgeslagen: {2}  |  volgende: {3}' -f $script:Queue.Count, $tiktok, $skip, $volgende)
-    if ($laatste) { $summary.Text += "`nLaatste melding: " + $laatste }
-    Update-AutoButton
+    $kanaal = if ($script:Cfg.KanaalNaam) { [string]$script:Cfg.KanaalNaam + '   ' } else { '' }
+    $lblSub.Text = ('{0}{1} in de wachtrij   {2} nog naar TikTok   {3} overgeslagen' -f $kanaal, $script:Queue.Count, $tiktok, $skip)
+    $lblNext.Text = $(if ($script:Queue.Count) { 'Volgende: ' + $script:Queue[0].Title } else { 'De wachtrij is leeg.' })
+    $viewBtns[1].Text = $(if ($tiktok) { 'Nog naar TikTok (' + $tiktok + ')' } else { 'Nog naar TikTok' })
+    $viewBtns[2].Text = $(if ($skip) { 'Overgeslagen (' + $skip + ')' } else { 'Overgeslagen' })
+    Update-AutoButton; Update-ViewButtons
     if ($script:Cfg.AutoGepauzeerd) { Set-Status ('LET OP: ' + $script:Cfg.AutoReden) }
+    elseif (-not $status.Text -and (Test-Path -LiteralPath $LogFile)) { Set-Status ('Laatste melding: ' + [string](Get-Content -LiteralPath $LogFile -Tail 1 -Encoding UTF8)) }
+    $lst.Invalidate()
 }
+function Set-View([int]$i) { $script:View = $i; $lst.SelectedIndex = -1; Refresh-List }
+$viewBtns[0].Add_Click({ Set-View 0 }); $viewBtns[1].Add_Click({ Set-View 1 }); $viewBtns[2].Add_Click({ Set-View 2 }); $viewBtns[3].Add_Click({ Set-View 3 })
+
 function Get-Selected {
-    if ($lst.SelectedIndex -lt 0 -or $lst.SelectedIndex -ge $script:Shown.Count) { [System.Windows.Forms.MessageBox]::Show('Kies eerst een clip in de lijst.') | Out-Null; return $null }
-    return $script:Shown[$lst.SelectedIndex]
+    if ($lst.SelectedIndex -lt 0 -or $lst.SelectedIndex -ge @($script:Shown).Count) { [System.Windows.Forms.MessageBox]::Show('Kies eerst een clip in de lijst.') | Out-Null; return $null }
+    return @($script:Shown)[$lst.SelectedIndex]
 }
 
 $lst.Add_SelectedIndexChanged({
-    if ($lst.SelectedIndex -lt 0 -or $lst.SelectedIndex -ge $script:Shown.Count) { return }
-    $c = $script:Shown[$lst.SelectedIndex]
+    $lst.Invalidate()
+    if ($lst.SelectedIndex -lt 0 -or $lst.SelectedIndex -ge @($script:Shown).Count) { return }
+    $c = @($script:Shown)[$lst.SelectedIndex]
     $txtTitle.Text = $c.Title
     $txt.Text = $c.Text
     if ($c.Gepost -and $c.YouTubeId -ne 'al eerder gepost') { Set-Status ('Al op YouTube: https://youtube.com/shorts/{0}' -f $c.YouTubeId) }
-    elseif (-not $script:Cfg.AutoGepauzeerd) { Set-Status ('Bestand: ' + (Split-Path $c.Mp4 -Leaf)) }
+    elseif (-not $script:Cfg.AutoGepauzeerd) { Set-Status ('Bestand: ' + $c.Mp4) }
 })
-$cmbView.Add_SelectedIndexChanged({ $lst.SelectedIndex = -1; Refresh-List })
 
+# ---------------------------------------------------------------- instellingen (venster)
+function Show-Settings([bool]$eerste) {
+    $d = New-Object System.Windows.Forms.Form
+    $d.Text = 'Instellingen - Clip-poster'
+    $d.ClientSize = New-Object System.Drawing.Size(660, 700)
+    $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'; $d.MaximizeBox = $false; $d.MinimizeBox = $false
+    $d.BackColor = $C.Bg; $d.ForeColor = $C.Text; $d.Font = $F.Body
+    $card = New-Card $d 16 16 628 608
+    $y = 16
+    if ($eerste) {
+        $w = New-Lbl $card 'Welkom! Stel de Clip-poster in voor jouw kanaal. Je kunt dit later altijd aanpassen.' 20 $y $F.Head $C.Text
+        $y += 34
+    }
+    function Add-Field([string]$label, [string]$hint, [string]$value, [int]$h) {
+        $null = New-Lbl $card $label 20 $script:fy $F.Badge $C.Muted
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Location = New-Object System.Drawing.Point(20, ($script:fy + 20)); $tb.Size = New-Object System.Drawing.Size(588, $(if ($h) { $h } else { 28 }))
+        if ($h) { $tb.Multiline = $true; $tb.ScrollBars = 'Vertical' }
+        Set-Input $tb; $tb.Text = $value
+        $card.Controls.Add($tb)
+        $script:fy += 20 + $tb.Height + 2
+        if ($hint) { $null = New-Lbl $card $hint 20 $script:fy $F.Small $C.Muted; $script:fy += 20 }
+        $script:fy += 8
+        return $tb
+    }
+    $script:fy = $y
+    $tbKanaal = Add-Field 'NAAM VAN JE KANAAL' 'Alleen voor meldingen. Het kanaal zelf kies je bij "YouTube koppelen".' ([string]$script:Cfg.KanaalNaam) 0
+    $tbRegel = Add-Field 'REGEL ONDER ELKE BESCHRIJVING' 'Bijvoorbeeld: Live op Twitch: https://twitch.tv/jouwnaam  (leeg = geen regel)' ([string]$script:Cfg.TwitchRegel) 0
+    $mapNu = if ($script:Cfg.ClipsMap) { [string]$script:Cfg.ClipsMap } else { $SocialsDir }
+    $tbMap = Add-Field 'MAP MET CLIPS' 'Hierin komen de mappen "Vandaag posten", "Gepost" en "Muziek".' $mapNu 0
+    $tbMap.Width = 480
+    $btnBrowse = New-Btn $card 'Bladeren' 508 ($tbMap.Top - 1) 100 30 $C.Input $null
+    $btnBrowse.Add_Click({
+        $fb = New-Object System.Windows.Forms.FolderBrowserDialog
+        $fb.SelectedPath = $tbMap.Text
+        if ($fb.ShowDialog() -eq 'OK') { $tbMap.Text = $fb.SelectedPath }
+    })
+    $gamesTxt = (@($script:Cfg.Games) | Where-Object { $_ -and $_.Naam } | ForEach-Object { '{0}: {1}' -f $_.Naam, ((@($_.Tags) | ForEach-Object { ([string]$_).TrimStart('#') }) -join ', ') }) -join "`r`n"
+    $tbGames = Add-Field 'GAMES  (een per regel:  Naam: hashtag, hashtag)' 'Voorbeeld:  Minecraft: minecraft, mc   -   de game wordt herkend aan de hashtags in je tekst.' $gamesTxt 84
+    $tbRot = Add-Field 'OM EN OM POSTEN  (games, gescheiden door komma''s)' 'Leeg = alle games hierboven om en om. Andere games komen er af en toe tussen.' ((@($script:Cfg.Rotatie) | Where-Object { $_ }) -join ', ') 0
+    $tbTijden = Add-Field 'POSTTIJDEN VOOR AUTOMATISCH POSTEN' 'Bijvoorbeeld: 12:07, 16:04, 19:06, 21:03  (net niet op het hele uur is rustiger bij YouTube)' (@($script:Cfg.Tijden) -join ', ') 0
+    $chkGame = New-Object System.Windows.Forms.CheckBox
+    $chkGame.Text = 'Clips zonder herkende game overslaan'; $chkGame.Checked = [bool]$script:Cfg.GameVerplicht
+    $chkGame.Location = New-Object System.Drawing.Point(20, $script:fy); $chkGame.AutoSize = $true; $chkGame.ForeColor = $C.Text
+    $card.Controls.Add($chkGame); $script:fy += 28
+    $chkOrig = New-Object System.Windows.Forms.CheckBox
+    $chkOrig.Text = 'Regel "Origineel: Replay ..." verplicht (tegen dubbel posten van OBS-replays)'; $chkOrig.Checked = [bool]$script:Cfg.OrigineelVerplicht
+    $chkOrig.Location = New-Object System.Drawing.Point(20, $script:fy); $chkOrig.AutoSize = $true; $chkOrig.ForeColor = $C.Text
+    $card.Controls.Add($chkOrig)
+    $ok = New-Btn $d 'Opslaan' 404 636 240 46 $C.Accent $F.Head
+    $cancel = New-Btn $d 'Annuleren' 16 636 160 46 $C.Card $null
+    $ok.Add_Click({
+        $tijden = @(($tbTijden.Text -split '[,;\s]+') | Where-Object { $_ })
+        foreach ($t in $tijden) {
+            $tmp = [datetime]::MinValue
+            if (-not [datetime]::TryParseExact($t, [string[]]@('HH:mm', 'H:mm'), [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$tmp)) {
+                [System.Windows.Forms.MessageBox]::Show(('"{0}" is geen geldige tijd. Gebruik bijvoorbeeld 12:07.' -f $t), 'Instellingen') | Out-Null; return
+            }
+        }
+        if (-not $tijden.Count) { [System.Windows.Forms.MessageBox]::Show('Vul minstens een posttijd in.', 'Instellingen') | Out-Null; return }
+        $games = New-Object System.Collections.Generic.List[object]
+        foreach ($l in ($tbGames.Text -split "`r?`n")) {
+            if (-not $l.Trim()) { continue }
+            $naam = $l; $tags = @()
+            if ($l -match '^(.*?):(.*)$') { $naam = $Matches[1]; $tags = @(($Matches[2] -split '[,;\s]+') | ForEach-Object { $_.Trim().TrimStart('#').ToLower() } | Where-Object { $_ }) }
+            $naam = $naam.Trim()
+            if (-not $tags.Count) { $tags = @(($naam -replace '[^a-zA-Z0-9]', '').ToLower()) }
+            if ($naam) { $games.Add([pscustomobject]@{ Naam = $naam; Tags = $tags }) }
+        }
+        $map = $tbMap.Text.Trim()
+        try { if (-not (Test-Path -LiteralPath $map)) { New-Item -ItemType Directory -Path $map -Force | Out-Null } }
+        catch { [System.Windows.Forms.MessageBox]::Show(('De map "{0}" kan niet worden gemaakt.' -f $map), 'Instellingen') | Out-Null; return }
+        Reload-Cfg
+        $oudeTijden = (@($script:Cfg.Tijden) -join ',')
+        $script:Cfg.KanaalNaam = $tbKanaal.Text.Trim()
+        $script:Cfg.TwitchRegel = $tbRegel.Text.Trim()
+        $script:Cfg.ClipsMap = $(if ($map -eq (Join-Path $Desktop 'Clips voor socials')) { '' } else { $map })
+        $script:Cfg.Games = $games.ToArray()
+        $script:Cfg.Rotatie = @(($tbRot.Text -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+        $script:Cfg.Tijden = $tijden
+        $script:Cfg.GameVerplicht = $chkGame.Checked
+        $script:Cfg.OrigineelVerplicht = $chkOrig.Checked
+        $script:Cfg.Ingesteld = $true
+        Save-Cfg; Set-Folders
+        foreach ($sub in @($VandaagDir, $GepostDir, $MuziekDir)) { if (-not (Test-Path -LiteralPath $sub)) { New-Item -ItemType Directory -Path $sub -Force | Out-Null } }
+        # Andere posttijden? Dan de Windows-taak bijwerken.
+        if ((Get-AutoTask) -and $oudeTijden -ne ($tijden -join ',')) { try { Set-AutoTask $true } catch { } }
+        $d.DialogResult = 'OK'; $d.Close()
+    })
+    $cancel.Add_Click({ $d.Close() })
+    if ($env:CLIPPOSTER_SCREENSHOT_SETTINGS) {
+        $st = New-Object System.Windows.Forms.Timer; $st.Interval = 1200
+        $st.Add_Tick({ $st.Stop(); Save-Shot $d $env:CLIPPOSTER_SCREENSHOT_SETTINGS; $d.Close() })
+        $d.Add_Shown({ $st.Start() })
+    }
+    return ($d.ShowDialog($form) -eq 'OK')
+}
+
+# ---------------------------------------------------------------- uploaden vanuit het venster
 $script:Job = $null; $script:JobClip = $null; $script:JobThenTikTok = $false
 $timer = New-Object System.Windows.Forms.Timer; $timer.Interval = 1000
 $timer.Add_Tick({
@@ -1168,7 +1579,7 @@ function Start-YouTube($c, [bool]$thenTikTok) {
         if ($a -ne 'Yes') { return }
     }
     if ($c.MuziekNodig -or $c.Probleem) {
-        $why = if ($c.MuziekNodig) { 'GTA-stream met echo, er moet nog muziek onder' } else { $c.Probleem }
+        $why = if ($c.MuziekNodig) { 'stream met slecht geluid, er moet nog muziek onder' } else { $c.Probleem }
         if ([System.Windows.Forms.MessageBox]::Show(('Deze clip wordt normaal overgeslagen ({0}). Toch uploaden?' -f $why), 'Let op', 'YesNo') -ne 'Yes') { return }
     }
     if (-not $txtTitle.Text.Trim()) { [System.Windows.Forms.MessageBox]::Show('Vul een titel in.') | Out-Null; return }
@@ -1191,7 +1602,7 @@ function Prepare-TikTok($c) {
 }
 
 $btnNext.Add_Click({
-    $cmbView.SelectedIndex = 0; Refresh-List
+    Set-View 0
     if (-not $script:Queue.Count) { Set-Status 'De wachtrij is leeg.'; return }
     $lst.SelectedIndex = 0
     Start-YouTube $script:Queue[0] $true
@@ -1237,15 +1648,17 @@ $btnAuto.Add_Click({
     try {
         if (Get-AutoTask) { Set-AutoTask $false; Set-Status 'Automatisch posten staat uit.' }
         else {
-            if (-not (Test-Path -LiteralPath $TokenFile)) { Set-Status 'Koppel eerst YouTube (YouTube instellen).'; return }
+            if (-not (Test-Path -LiteralPath $TokenFile)) { Set-Status 'Koppel eerst YouTube (knop "YouTube koppelen" onderaan).'; return }
             Set-AutoTask $true
-            Set-Status ('Automatisch posten staat aan. Elke dag om {0} gaat de volgende clip op YouTube, ook als dit venster dicht is (de pc moet aan staan). TikTok-clips verschijnen in de lijst "Nog naar TikTok".' -f (@($script:Cfg.Tijden) -join ', '))
+            Set-Status ('Automatisch posten staat aan. Elke dag om {0} gaat de volgende clip op YouTube, ook als dit venster dicht is (de pc moet aan staan). TikTok-clips verschijnen bij "Nog naar TikTok".' -f (@($script:Cfg.Tijden) -join ', '))
         }
     } catch { Set-Status ('Automatisch posten instellen mislukt: ' + $_.Exception.Message) }
     Refresh-List
 })
 $btnMusic.Add_Click({
     try {
+        $todo = @($script:All | Where-Object { $_.MuziekNodig -and -not $_.Gepost -and -not $_.Probleem }).Count
+        if (-not $todo) { Set-Status 'Er zijn geen clips die nog muziek nodig hebben. (Dat stel je per stream in met EchoDatums in config.json.)'; return }
         $ff = Find-Ffmpeg
         if (-not $ff) {
             $a = [System.Windows.Forms.MessageBox]::Show("Voor muziek onder de clips is het gratis programma ffmpeg nodig.`n`nNu installeren via winget (de officiële Windows-pakketbron, pakket Gyan.FFmpeg, ongeveer 100 MB)?", 'ffmpeg installeren', 'YesNo')
@@ -1253,9 +1666,7 @@ $btnMusic.Add_Click({
             Set-Status 'ffmpeg wordt geïnstalleerd... (dit kan een paar minuten duren)'
             $ff = Install-Ffmpeg
         }
-        $todo = @($script:All | Where-Object { $_.MuziekNodig -and -not $_.Gepost -and -not $_.Probleem }).Count
-        if (-not $todo) { Set-Status 'Er zijn geen clips die nog muziek nodig hebben.'; return }
-        $a = [System.Windows.Forms.MessageBox]::Show(("Muziek zetten onder {0} GTA-clips met echo?`n`nDe nieuwe versies komen in 'Vandaag posten' en gaan daarna vanzelf in de wachtrij. De originelen blijven staan." -f $todo), 'Muziek eronder', 'YesNo')
+        $a = [System.Windows.Forms.MessageBox]::Show(("Muziek zetten onder {0} clips?`n`nDe muziek komt uit de map:`n{1}`n`nDe nieuwe versies komen in 'Vandaag posten' en gaan daarna vanzelf in de wachtrij. De originelen blijven staan." -f $todo, $MuziekDir), 'Muziek eronder', 'YesNo')
         if ($a -ne 'Yes') { return }
         $n = Invoke-MusicBatch $todo
         Set-Status ('{0} clips hebben nu muziek en staan in de wachtrij.' -f $n)
@@ -1264,11 +1675,11 @@ $btnMusic.Add_Click({
 })
 $btnStats.Add_Click({
     try { Set-Status 'Cijfers ophalen bij YouTube...'; $txtS = Format-Stats (Get-YouTubeStats); Set-Status ''; [System.Windows.Forms.MessageBox]::Show($txtS, 'Cijfers') | Out-Null }
-    catch { Set-Status ('Cijfers ophalen mislukt: ' + $_.Exception.Message + ' (log eventueel opnieuw in via YouTube instellen; de leesrechten zijn nieuw.)') }
+    catch { Set-Status ('Cijfers ophalen mislukt: ' + $_.Exception.Message + ' (log eventueel opnieuw in via YouTube koppelen.)') }
 })
 $btnPhone.Add_Click({
     $topic = [string]$script:Cfg.NtfyTopic
-    $msg = "Meldingen op je telefoon:`n`n1. Installeer de gratis app 'ntfy' (Play Store / App Store).`n2. Tik op + en abonneer je op dit onderwerp:`n`n      $topic`n`n3. Klik hierna op OK: dan stuurt de Clip-poster een testmelding.`n`nJe krijgt een melding bij elke post, als iets mislukt, als posten op pauze gaat en als de wachtrij leeg is.`n(Het onderwerp staat ook op je klembord.)"
+    $msg = "Meldingen op je telefoon:`n`n1. Installeer de gratis app 'ntfy' (Play Store / App Store).`n2. Tik op + en abonneer je op dit onderwerp:`n`n      $topic`n`n3. Klik hierna op OK: dan stuurt de Clip-poster een testmelding.`n`nJe krijgt een melding bij elke post, als iets mislukt, als posten op pauze gaat en als de wachtrij leeg is.`n(Het onderwerp staat ook op je klembord. Houd het geheim: iedereen die het kent kan je meldingen lezen.)"
     Set-Clipboard -Value $topic
     [System.Windows.Forms.MessageBox]::Show($msg, 'Telefoon') | Out-Null
     if (Send-PhoneCore 'Clip-poster: testmelding' 'Het werkt! Vanaf nu krijg je hier meldingen van de Clip-poster.') { Set-Status ('Testmelding verstuurd naar onderwerp ' + $topic) }
@@ -1276,22 +1687,47 @@ $btnPhone.Add_Click({
 })
 $btnCheck.Add_Click({ [System.Windows.Forms.MessageBox]::Show(((Get-Checks $script:All) -join "`n`n"), 'Controle') | Out-Null })
 $btnLog.Add_Click({ if (Test-Path -LiteralPath $LogFile) { Start-Process notepad.exe -ArgumentList ('"{0}"' -f $LogFile) } else { Set-Status 'Het logboek is nog leeg.' } })
+$btnFolder.Add_Click({
+    foreach ($sub in @($SocialsDir, $VandaagDir)) { if (-not (Test-Path -LiteralPath $sub)) { New-Item -ItemType Directory -Path $sub -Force | Out-Null } }
+    Start-Process explorer.exe -ArgumentList ('"{0}"' -f $SocialsDir)
+})
+$btnSettings.Add_Click({ if (Show-Settings $false) { Set-Status 'Instellingen opgeslagen.'; Refresh-List } })
+$HandleidingUrl = 'https://freed-cloud.github.io/clip-poster/handleiding.html'
 $btnSetup.Add_Click({
-    $msg = "Kies het bestand client_secret.json dat je in Google Cloud hebt gedownload.`n`nDaarna log je in bij Google. Kies daar het kanaal playingparentsnl (niet je eigen naam)."
-    [System.Windows.Forms.MessageBox]::Show($msg, 'YouTube instellen') | Out-Null
+    $msg = "YouTube koppelen (eenmalig, ongeveer 10 minuten):`n`n1. Maak in Google Cloud een gratis project met de YouTube Data API v3.`n2. Maak een OAuth-client van het type 'Desktop-app' en download het bestand client_secret.json.`n3. Kies dat bestand zo meteen hier.`n4. Log in bij Google en kies het kanaal {0}.`n`nStap voor stap met plaatjes: Ja = handleiding openen in je browser.`nNee = ik heb client_secret.json al, verder." -f (Get-KanaalTekst)
+    $a = [System.Windows.Forms.MessageBox]::Show($msg, 'YouTube koppelen', 'YesNoCancel')
+    if ($a -eq 'Cancel') { return }
+    if ($a -eq 'Yes') { Start-Process $HandleidingUrl; return }
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Filter = 'JSON (*.json)|*.json'
+    $dlg.Filter = 'client_secret (*.json)|*.json'
     if ($dlg.ShowDialog() -ne 'OK') { return }
     Copy-Item -LiteralPath $dlg.FileName -Destination $SecretFile -Force
     Remove-Item -LiteralPath $TokenFile -ErrorAction SilentlyContinue
     try {
         $null = Get-AccessToken
         $script:Cfg.AutoGepauzeerd = $false; $script:Cfg.AutoReden = ''; Save-Cfg
-        Set-Status 'YouTube is gekoppeld. Bij de eerste upload zie je op welk kanaal hij komt.'
+        Set-Status 'YouTube is gekoppeld. Bij de eerste upload onthoudt de Clip-poster op welk kanaal hij komt.'
     } catch { Set-Status ('Koppelen mislukt: ' + $_.Exception.Message) }
     Refresh-List
 })
 
-$form.Add_Shown({ $cmbView.SelectedIndex = 0 })
+$form.Add_Shown({
+    Refresh-List
+    if (-not $script:Cfg.Ingesteld -and -not $env:CLIPPOSTER_SCREENSHOT) {
+        if (Show-Settings $true) { Set-Status "Klaar! Zet je clips (video + .txt met dezelfde naam) in de map 'Vandaag posten' en klik daarna op 'YouTube koppelen'."; Refresh-List }
+    }
+    if ($env:CLIPPOSTER_SCREENSHOT) {
+        if ($lst.Items.Count -gt 1) { $lst.SelectedIndex = 1 }
+        Set-Status 'Op YouTube gezet (public) op kanaal "playingparentsnl": https://youtube.com/shorts/...   TikTok staat klaar: sleep de video naar de uploadpagina en plak de tekst (Ctrl+V).'
+        $script:ShotTimer = New-Object System.Windows.Forms.Timer; $script:ShotTimer.Interval = 1500
+        $script:ShotTimer.Add_Tick({
+            $script:ShotTimer.Stop()
+            Save-Shot $form $env:CLIPPOSTER_SCREENSHOT
+            if ($env:CLIPPOSTER_SCREENSHOT_SETTINGS) { [void](Show-Settings $false) }
+            $form.Close()
+        })
+        $script:ShotTimer.Start()
+    }
+})
 $form.Add_FormClosing({ if ($script:Job) { Stop-Job $script:Job -ErrorAction SilentlyContinue } })
 [void]$form.ShowDialog()
