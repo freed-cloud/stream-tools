@@ -45,7 +45,7 @@ $all = @(Get-AllClips)
 "   totaal: $($all.Count)"
 $v = @($all | ? Bron -eq 'Vandaag posten')
 Check ($v.Count -eq 5) 'vijf uit Vandaag posten'
-Check (($all | ? Key -eq '2026-11-19 16-47-23 m15').Count -eq 1) 'm15 maar 1 keer (Vandaag wint)'
+Check (@($all | ? Key -eq '2026-11-19 16-47-23 m15').Count -eq 1) 'm15 maar 1 keer (Vandaag wint)'
 Check (($all | ? Key -eq '2026-11-19 16-47-23 m15').Bron -eq 'Vandaag posten') 'm15 komt uit Vandaag posten'
 Check (($all | ? Key -eq '2026-11-19 16-47-23 m01').MuziekNodig) 'GTA 19 nov zonder muziek overgeslagen'
 Check (-not ($all | ? Key -eq '2026-11-21 09-10-44 m01').MuziekNodig) 'GTA 21 nov mag'
