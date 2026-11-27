@@ -1326,7 +1326,7 @@ $txt.Multiline = $true; $txt.ScrollBars = 'Vertical'
 $txt.Location = New-Object System.Drawing.Point(20, 94); $txt.Size = New-Object System.Drawing.Size(552, 118)
 $txt.Anchor = 'Top,Left,Right'; Set-Input $txt
 $cardR.Controls.Add($txt)
-$null = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $Letter.Badge $Kleur.Muted
+$lblPriv = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $Letter.Badge $Kleur.Muted
 $cmbPrivacy = New-Object System.Windows.Forms.ComboBox
 $cmbPrivacy.DropDownStyle = 'DropDownList'; $cmbPrivacy.FlatStyle = 'Flat'
 $cmbPrivacy.BackColor = $Kleur.Input; $cmbPrivacy.ForeColor = $Kleur.Text
@@ -1349,31 +1349,41 @@ $btnNext   = New-Btn $cardR 'Post volgende clip' 20 262 552 58 $Kleur.Accent $Le
 $btnNext.Anchor = 'Top,Left,Right'
 $lblNext = New-Lbl $cardR '' 22 324 $Letter.Small $Kleur.Muted
 $lblNext.AutoSize = $false; $lblNext.Size = New-Object System.Drawing.Size(552, 18); $lblNext.AutoEllipsis = $true
-$btnYt     = New-Btn $cardR 'Alleen YouTube (gekozen clip)' 20 348 272 40 $Kleur.Red
-$btnTt     = New-Btn $cardR 'TikTok klaarzetten (gekozen clip)' 300 348 272 40 $Kleur.Black
-$btnTtDone = New-Btn $cardR 'Staat op TikTok: klaar' 20 394 272 40 $Kleur.Green
-$btnRonde  = New-Btn $cardR 'TikTok-ronde: alles een voor een' 300 394 272 40 $Kleur.Black
+$btnYt     = New-Btn $cardR 'Alleen YouTube' 20 348 272 40 $Kleur.Red
+$btnTt     = New-Btn $cardR 'TikTok klaarzetten' 300 348 272 40 $Kleur.Black
+$btnTtDone = New-Btn $cardR 'Staat op TikTok' 20 394 272 40 $Kleur.Green
+$btnRonde  = New-Btn $cardR 'TikTok-ronde' 300 394 272 40 $Kleur.Black
 $btnAuto   = New-Btn $cardR '' 20 440 552 44 $Kleur.Blue
 $btnAuto.Anchor = 'Top,Left,Right'
 # Knoppen rechts schalen mee met de breedte van het venster.
 function Set-RightLayout {
     $w = $cardR.ClientSize.Width - 40
     $half = [int](($w - 8) / 2)
-    foreach ($row in @(@($btnYt, $btnTt, 348), @($btnTtDone, $btnRonde, 394))) {
-        $row[0].SetBounds(20, $row[2], $half, 40); $row[1].SetBounds((28 + $half), $row[2], ($w - $half - 8), 40)
+    # Het tekstvak krimpt op kleine schermen, zodat de statusregel onderaan altijd zichtbaar blijft.
+    $h = [math]::Max(50, [math]::Min(150, $cardR.ClientSize.Height - 462))
+    $txt.Height = $h
+    $y = 94 + $h + 12
+    $lblPriv.Top = $y; $cmbPrivacy.Top = $y - 4
+    $y += 38; $btnNext.Top = $y
+    $y += 62; $lblNext.Top = $y; $lblNext.Width = $w
+    $y += 24
+    foreach ($row in @(@($btnYt, $btnTt), @($btnTtDone, $btnRonde))) {
+        $row[0].SetBounds(20, $y, $half, 40); $row[1].SetBounds((28 + $half), $y, ($w - $half - 8), 40); $y += 46
     }
-    $lblNext.Width = $w
+    $btnAuto.Top = $y; $y += 56
+    $statusBox.SetBounds(20, $y, $w, [math]::Max(40, $cardR.ClientSize.Height - $y - 14))
 }
-$cardR.Add_Resize({ Set-RightLayout })
 $statusBox = New-Object System.Windows.Forms.Panel
 $statusBox.Location = New-Object System.Drawing.Point(20, 496); $statusBox.Size = New-Object System.Drawing.Size(552, 86); $statusBox.BackColor = $Kleur.Input
 $statusBox.MinimumSize = New-Object System.Drawing.Size(100, 36)
-$statusBox.Anchor = 'Top,Bottom,Left,Right'
+$statusBox.Anchor = 'Top,Left'
 $cardR.Controls.Add($statusBox); Set-Round $statusBox 8
 $status = New-Object System.Windows.Forms.Label
 $status.Dock = 'Fill'; $status.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
 $status.Font = $Letter.Small; $status.ForeColor = $Kleur.Text; $status.BackColor = $Kleur.Input
 $statusBox.Controls.Add($status)
+$cardR.Add_Resize({ Set-RightLayout })
+Set-RightLayout
 
 # --- onderbalk
 $bar = New-Object System.Windows.Forms.Panel
@@ -1746,7 +1756,8 @@ $btnSetup.Add_Click({
 
 # Past het venster niet op het scherm (bijv. een laptop), dan zo groot als het scherm.
 $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-if ($form.Width -gt $wa.Width -or $form.Height -gt $wa.Height) { $form.Size = New-Object System.Drawing.Size([math]::Min($form.Width, $wa.Width), [math]::Min($form.Height, $wa.Height)) }
+# (Behalve bij een schermafbeelding voor de website: die wordt op volle grootte getekend.)
+if (($form.Width -gt $wa.Width -or $form.Height -gt $wa.Height) -and -not ($env:CLIPPOSTER_SCREENSHOT -and -not $env:CLIPPOSTER_SHOT_SCREEN)) { $form.Size = New-Object System.Drawing.Size([math]::Min($form.Width, $wa.Width), [math]::Min($form.Height, $wa.Height)) }
 $form.Add_Shown({
     Refresh-List
     if (-not $script:Cfg.Ingesteld -and -not $env:CLIPPOSTER_SCREENSHOT) {
