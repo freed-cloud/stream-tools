@@ -19,6 +19,7 @@ $env:CLIPPOSTER_SCREENSHOT = Join-Path $uit ("clip-poster$suffix.png")
 $env:CLIPPOSTER_SCREENSHOT_SETTINGS = Join-Path $uit ("instellingen$suffix.png")
 if ($Scherm) { $env:CLIPPOSTER_SHOT_SCREEN = '1' } else { $env:CLIPPOSTER_SHOT_SCREEN = '' }
 $p = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $repo 'ClipPoster\ClipPoster.ps1')) -PassThru -NoNewWindow -RedirectStandardError (Join-Path $uit "fout$suffix.txt")
+$null = $p.Handle   # nodig om straks de exitcode te kunnen lezen
 if (-not $p.WaitForExit(90000)) {
     # Wat staat er op het scherm? (bijv. een melding die op een klik wacht)
     Add-Type -AssemblyName System.Windows.Forms, System.Drawing
