@@ -1117,7 +1117,7 @@ if ($GeenVenster) { return }   # alleen de functies laden (voor testen)
 
 # ---------------------------------------------------------------- venster
 # Kleuren en lettertypes (donker thema)
-$C = @{
+$Kleur = @{
     Bg      = [System.Drawing.Color]::FromArgb(15, 17, 23)
     Card    = [System.Drawing.Color]::FromArgb(24, 27, 36)
     Input   = [System.Drawing.Color]::FromArgb(32, 36, 48)
@@ -1134,7 +1134,7 @@ $C = @{
     Amber   = [System.Drawing.Color]::FromArgb(245, 158, 11)
     Black   = [System.Drawing.Color]::FromArgb(9, 9, 11)
 }
-$F = @{
+$Letter = @{
     App    = New-Object System.Drawing.Font('Segoe UI Semibold', 17)
     Head   = New-Object System.Drawing.Font('Segoe UI Semibold', 10.5)
     Body   = New-Object System.Drawing.Font('Segoe UI', 10)
@@ -1187,11 +1187,11 @@ function New-Btn($parent, [string]$text, [int]$x, [int]$y, [int]$w, [int]$h, $co
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text; $b.Location = New-Object System.Drawing.Point($x, $y); $b.Size = New-Object System.Drawing.Size($w, $h)
     $b.FlatStyle = 'Flat'; $b.FlatAppearance.BorderSize = 0; $b.Cursor = [System.Windows.Forms.Cursors]::Hand
-    if (-not $color) { $color = $C.Input }
+    if (-not $color) { $color = $Kleur.Input }
     $b.BackColor = $color; $b.ForeColor = [System.Drawing.Color]::White
     $b.FlatAppearance.MouseOverBackColor = (Get-Lighter $color 22)
     $b.FlatAppearance.MouseDownBackColor = (Get-Lighter $color 40)
-    $b.Font = $(if ($font) { $font } else { $F.Btn })
+    $b.Font = $(if ($font) { $font } else { $Letter.Btn })
     $b.UseVisualStyleBackColor = $false
     $parent.Controls.Add($b); Set-Round $b 8
     return $b
@@ -1199,16 +1199,16 @@ function New-Btn($parent, [string]$text, [int]$x, [int]$y, [int]$w, [int]$h, $co
 function New-Lbl($parent, [string]$text, [int]$x, [int]$y, $font, $color) {
     $l = New-Object System.Windows.Forms.Label
     $l.Text = $text; $l.Location = New-Object System.Drawing.Point($x, $y); $l.AutoSize = $true
-    $l.Font = $(if ($font) { $font } else { $F.Small }); $l.ForeColor = $(if ($color) { $color } else { $C.Muted }); $l.BackColor = [System.Drawing.Color]::Transparent
+    $l.Font = $(if ($font) { $font } else { $Letter.Small }); $l.ForeColor = $(if ($color) { $color } else { $Kleur.Muted }); $l.BackColor = [System.Drawing.Color]::Transparent
     $parent.Controls.Add($l); return $l
 }
 function New-Card($parent, [int]$x, [int]$y, [int]$w, [int]$h) {
     $p = New-Object System.Windows.Forms.Panel
-    $p.Location = New-Object System.Drawing.Point($x, $y); $p.Size = New-Object System.Drawing.Size($w, $h); $p.BackColor = $C.Card
+    $p.Location = New-Object System.Drawing.Point($x, $y); $p.Size = New-Object System.Drawing.Size($w, $h); $p.BackColor = $Kleur.Card
     $parent.Controls.Add($p); Set-Round $p 12
     return $p
 }
-function Set-Input($t) { $t.BackColor = $C.Input; $t.ForeColor = $C.Text; $t.BorderStyle = 'FixedSingle'; $t.Font = $F.Body }
+function Set-Input($t) { $t.BackColor = $Kleur.Input; $t.ForeColor = $Kleur.Text; $t.BorderStyle = 'FixedSingle'; $t.Font = $Letter.Body }
 
 # Schermafbeelding maken (alleen voor de website/handleiding, via CLIPPOSTER_SCREENSHOT).
 function Save-Shot($frm, [string]$path) {
@@ -1225,15 +1225,15 @@ $form.Text = 'Clip-poster'
 $form.ClientSize = New-Object System.Drawing.Size(1180, 770)
 $form.MinimumSize = New-Object System.Drawing.Size(1100, 760)
 $form.StartPosition = 'CenterScreen'
-$form.BackColor = $C.Bg; $form.ForeColor = $C.Text
-$form.Font = $F.Body
+$form.BackColor = $Kleur.Bg; $form.ForeColor = $Kleur.Text
+$form.Font = $Letter.Body
 
 # --- kop
 $head = New-Object System.Windows.Forms.Panel
-$head.Dock = 'Top'; $head.Height = 76; $head.BackColor = $C.Card
+$head.Dock = 'Top'; $head.Height = 76; $head.BackColor = $Kleur.Card
 $form.Controls.Add($head)
 $logo = New-Object System.Windows.Forms.Panel
-$logo.Location = New-Object System.Drawing.Point(20, 18); $logo.Size = New-Object System.Drawing.Size(40, 40); $logo.BackColor = $C.Accent
+$logo.Location = New-Object System.Drawing.Point(20, 18); $logo.Size = New-Object System.Drawing.Size(40, 40); $logo.BackColor = $Kleur.Accent
 $head.Controls.Add($logo); Set-Round $logo 10
 $logo.Add_Paint({
     param($s, $e)
@@ -1241,11 +1241,11 @@ $logo.Add_Paint({
     $pts = [System.Drawing.Point[]]@((New-Object System.Drawing.Point(15, 11)), (New-Object System.Drawing.Point(29, 20)), (New-Object System.Drawing.Point(15, 29)))
     $e.Graphics.FillPolygon((Get-Brush ([System.Drawing.Color]::White)), $pts)
 })
-$lblApp = New-Lbl $head 'Clip-poster' 70 12 $F.App $C.Text
-$lblSub = New-Lbl $head '' 73 46 $F.Small $C.Muted
+$lblApp = New-Lbl $head 'Clip-poster' 70 12 $Letter.App $Kleur.Text
+$lblSub = New-Lbl $head '' 73 46 $Letter.Small $Kleur.Muted
 $pill = New-Object System.Windows.Forms.Label
 $pill.AutoSize = $false; $pill.Size = New-Object System.Drawing.Size(270, 34); $pill.TextAlign = 'MiddleCenter'
-$pill.Font = $F.Btn; $pill.ForeColor = [System.Drawing.Color]::White; $pill.Anchor = 'Top,Right'
+$pill.Font = $Letter.Btn; $pill.ForeColor = [System.Drawing.Color]::White; $pill.Anchor = 'Top,Right'
 $pill.Location = New-Object System.Drawing.Point(($form.ClientSize.Width - 290), 21)
 $head.Controls.Add($pill); Set-Round $pill 17
 
@@ -1256,18 +1256,18 @@ $script:View = 0
 $viewBtns = @()
 $vx = 12
 foreach ($v in @('Wachtrij', 'Nog naar TikTok', 'Overgeslagen', 'Alles')) {
-    $w = [System.Windows.Forms.TextRenderer]::MeasureText($v, $F.Btn).Width + 26
-    $b = New-Btn $cardL $v $vx 12 $w 32 $C.Input $F.Btn
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($v, $Letter.Btn).Width + 26
+    $b = New-Btn $cardL $v $vx 12 $w 32 $Kleur.Input $Letter.Btn
     $viewBtns += $b; $vx += $w + 6
 }
 $lst = New-Object System.Windows.Forms.ListBox
 $lst.Location = New-Object System.Drawing.Point(8, 54); $lst.Size = New-Object System.Drawing.Size(524, 534)
 $lst.Anchor = 'Top,Bottom,Left,Right'
-$lst.BorderStyle = 'None'; $lst.BackColor = $C.Card; $lst.ForeColor = $C.Text
+$lst.BorderStyle = 'None'; $lst.BackColor = $Kleur.Card; $lst.ForeColor = $Kleur.Text
 $lst.DrawMode = 'OwnerDrawFixed'; $lst.ItemHeight = 58; $lst.IntegralHeight = $false
 $cardL.Controls.Add($lst)
-$lblEmpty = New-Lbl $cardL '' 24 80 $F.Body $C.Muted
-$lblEmpty.AutoSize = $false; $lblEmpty.Size = New-Object System.Drawing.Size(490, 120); $lblEmpty.BackColor = $C.Card
+$lblEmpty = New-Lbl $cardL '' 24 80 $Letter.Body $Kleur.Muted
+$lblEmpty.AutoSize = $false; $lblEmpty.Size = New-Object System.Drawing.Size(490, 120); $lblEmpty.BackColor = $Kleur.Card
 
 $lst.Add_DrawItem({
     param($s, $e)
@@ -1276,60 +1276,60 @@ $lst.Add_DrawItem({
     $g = $e.Graphics; $g.SmoothingMode = 'AntiAlias'
     $r = $e.Bounds
     $sel = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0
-    $g.FillRectangle((Get-Brush $C.Card), $r)
+    $g.FillRectangle((Get-Brush $Kleur.Card), $r)
     $inner = New-Object System.Drawing.Rectangle(($r.X + 2), ($r.Y + 3), ($r.Width - 6), ($r.Height - 6))
-    if ($sel) { $g.FillPath((Get-Brush $C.Sel), (New-RoundPath $inner 8)) }
+    if ($sel) { $g.FillPath((Get-Brush $Kleur.Sel), (New-RoundPath $inner 8)) }
     $x = $r.X + 12
     if ($script:View -eq 0) {
-        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]($e.Index + 1), $F.Head, (New-Object System.Drawing.Rectangle($x, $r.Y, 28, $r.Height)), $C.Muted, [System.Windows.Forms.TextFormatFlags]'VerticalCenter,Right')
+        [System.Windows.Forms.TextRenderer]::DrawText($g, [string]($e.Index + 1), $Letter.Head, (New-Object System.Drawing.Rectangle($x, $r.Y, 28, $r.Height)), $Kleur.Muted, [System.Windows.Forms.TextFormatFlags]'VerticalCenter,Right')
         $x += 36
     }
     # game-label
     $gname = if ($c.Game) { [string]$c.Game } else { 'Overig' }
-    $gw = [System.Windows.Forms.TextRenderer]::MeasureText($gname, $F.Badge).Width + 12
+    $gw = [System.Windows.Forms.TextRenderer]::MeasureText($gname, $Letter.Badge).Width + 12
     $br = New-Object System.Drawing.Rectangle($x, ($r.Y + 9), $gw, 19)
     $g.FillPath((Get-Brush (Get-GameColor ([string]$c.Game))), (New-RoundPath $br 9))
-    [System.Windows.Forms.TextRenderer]::DrawText($g, $gname, $F.Badge, $br, [System.Drawing.Color]::White, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter,NoPrefix,SingleLine')
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $gname, $Letter.Badge, $br, [System.Drawing.Color]::White, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter,NoPrefix,SingleLine')
     # YT / TT
     $chipX = $r.Right - 84
-    foreach ($ch in @(@('YT', $c.Gepost, $C.Red), @('TT', $c.TikTok, $C.Black))) {
+    foreach ($ch in @(@('YT', $c.Gepost, $Kleur.Red), @('TT', $c.TikTok, $Kleur.Black))) {
         $cr = New-Object System.Drawing.Rectangle($chipX, ($r.Y + 18), 32, 22)
-        $fill = if ($ch[1]) { $ch[2] } else { $C.Input }
+        $fill = if ($ch[1]) { $ch[2] } else { $Kleur.Input }
         $g.FillPath((Get-Brush $fill), (New-RoundPath $cr 6))
-        $fc = if ($ch[1]) { [System.Drawing.Color]::White } else { $C.Muted }
-        [System.Windows.Forms.TextRenderer]::DrawText($g, $ch[0], $F.Badge, $cr, $fc, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter')
+        $fc = if ($ch[1]) { [System.Drawing.Color]::White } else { $Kleur.Muted }
+        [System.Windows.Forms.TextRenderer]::DrawText($g, $ch[0], $Letter.Badge, $cr, $fc, [System.Windows.Forms.TextFormatFlags]'HorizontalCenter,VerticalCenter')
         $chipX += 38
     }
     # titel en tweede regel
     $tx = $x + $gw + 8
     $titleRect = New-Object System.Drawing.Rectangle($tx, ($r.Y + 7), ($chipX - 76 - $tx - 8), 22)
-    [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$c.Title, $F.Head, $titleRect, $C.Text, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine,VerticalCenter')
-    $sub = Split-Path $c.Mp4 -Leaf; $subColor = $C.Muted
-    if ($c.MuziekNodig) { $sub = 'Muziek nodig  -  ' + $sub; $subColor = $C.Amber }
-    elseif ($c.Probleem) { $sub = $c.Probleem; $subColor = $C.Amber }
+    [System.Windows.Forms.TextRenderer]::DrawText($g, [string]$c.Title, $Letter.Head, $titleRect, $Kleur.Text, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine,VerticalCenter')
+    $sub = Split-Path $c.Mp4 -Leaf; $subColor = $Kleur.Muted
+    if ($c.MuziekNodig) { $sub = 'Muziek nodig  -  ' + $sub; $subColor = $Kleur.Amber }
+    elseif ($c.Probleem) { $sub = $c.Probleem; $subColor = $Kleur.Amber }
     $subRect = New-Object System.Drawing.Rectangle($x, ($r.Y + 32), ($chipX - 76 - $x - 8), 18)
-    [System.Windows.Forms.TextRenderer]::DrawText($g, $sub, $F.Small, $subRect, $subColor, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine')
-    $g.FillRectangle((Get-Brush $C.Line), ($r.X + 12), ($r.Bottom - 1), ($r.Width - 24), 1)
+    [System.Windows.Forms.TextRenderer]::DrawText($g, $sub, $Letter.Small, $subRect, $subColor, [System.Windows.Forms.TextFormatFlags]'EndEllipsis,NoPrefix,SingleLine')
+    $g.FillRectangle((Get-Brush $Kleur.Line), ($r.X + 12), ($r.Bottom - 1), ($r.Width - 24), 1)
 })
 
 # --- details en knoppen (rechts)
 $cardR = New-Card $form 572 92 592 596
 $cardR.Anchor = 'Top,Bottom,Left,Right'
-$null = New-Lbl $cardR 'TITEL  (YouTube, max. 100 tekens)' 20 16 $F.Badge $C.Muted
+$null = New-Lbl $cardR 'TITEL  (YouTube, max. 100 tekens)' 20 16 $Letter.Badge $Kleur.Muted
 $txtTitle = New-Object System.Windows.Forms.TextBox
 $txtTitle.Location = New-Object System.Drawing.Point(20, 36); $txtTitle.Size = New-Object System.Drawing.Size(552, 28); $txtTitle.MaxLength = 100
 $txtTitle.Anchor = 'Top,Left,Right'; Set-Input $txtTitle
 $cardR.Controls.Add($txtTitle)
-$null = New-Lbl $cardR 'TEKST MET HASHTAGS  (beschrijving op YouTube, gekopieerd voor TikTok)' 20 74 $F.Badge $C.Muted
+$null = New-Lbl $cardR 'TEKST MET HASHTAGS  (beschrijving op YouTube, gekopieerd voor TikTok)' 20 74 $Letter.Badge $Kleur.Muted
 $txt = New-Object System.Windows.Forms.TextBox
 $txt.Multiline = $true; $txt.ScrollBars = 'Vertical'
 $txt.Location = New-Object System.Drawing.Point(20, 94); $txt.Size = New-Object System.Drawing.Size(552, 118)
 $txt.Anchor = 'Top,Left,Right'; Set-Input $txt
 $cardR.Controls.Add($txt)
-$null = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $F.Badge $C.Muted
+$null = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $Letter.Badge $Kleur.Muted
 $cmbPrivacy = New-Object System.Windows.Forms.ComboBox
 $cmbPrivacy.DropDownStyle = 'DropDownList'; $cmbPrivacy.FlatStyle = 'Flat'
-$cmbPrivacy.BackColor = $C.Input; $cmbPrivacy.ForeColor = $C.Text
+$cmbPrivacy.BackColor = $Kleur.Input; $cmbPrivacy.ForeColor = $Kleur.Text
 [void]$cmbPrivacy.Items.AddRange(@('openbaar', 'verborgen (unlisted)', 'privé'))
 $cmbPrivacy.Location = New-Object System.Drawing.Point(130, 220); $cmbPrivacy.Size = New-Object System.Drawing.Size(200, 28)
 $privacyMap = @{ 'openbaar' = 'public'; 'verborgen (unlisted)' = 'unlisted'; 'privé' = 'private' }
@@ -1337,34 +1337,34 @@ $cmbPrivacy.SelectedIndex = [array]::IndexOf(@('public', 'unlisted', 'private'),
 if ($cmbPrivacy.SelectedIndex -lt 0) { $cmbPrivacy.SelectedIndex = 0 }
 $cardR.Controls.Add($cmbPrivacy)
 
-$btnNext   = New-Btn $cardR 'Post volgende clip' 20 262 552 58 $C.Accent $F.Big
+$btnNext   = New-Btn $cardR 'Post volgende clip' 20 262 552 58 $Kleur.Accent $Letter.Big
 $btnNext.Anchor = 'Top,Left,Right'
-$lblNext = New-Lbl $cardR '' 22 324 $F.Small $C.Muted
+$lblNext = New-Lbl $cardR '' 22 324 $Letter.Small $Kleur.Muted
 $lblNext.AutoSize = $false; $lblNext.Size = New-Object System.Drawing.Size(552, 18); $lblNext.AutoEllipsis = $true
-$btnYt     = New-Btn $cardR 'Alleen YouTube (gekozen clip)' 20 348 272 40 $C.Red
-$btnTt     = New-Btn $cardR 'TikTok klaarzetten (gekozen clip)' 300 348 272 40 $C.Black
-$btnTtDone = New-Btn $cardR 'Staat op TikTok: klaar' 20 394 272 40 $C.Green
-$btnRonde  = New-Btn $cardR 'TikTok-ronde: alles een voor een' 300 394 272 40 $C.Black
-$btnAuto   = New-Btn $cardR '' 20 440 552 44 $C.Blue
+$btnYt     = New-Btn $cardR 'Alleen YouTube (gekozen clip)' 20 348 272 40 $Kleur.Red
+$btnTt     = New-Btn $cardR 'TikTok klaarzetten (gekozen clip)' 300 348 272 40 $Kleur.Black
+$btnTtDone = New-Btn $cardR 'Staat op TikTok: klaar' 20 394 272 40 $Kleur.Green
+$btnRonde  = New-Btn $cardR 'TikTok-ronde: alles een voor een' 300 394 272 40 $Kleur.Black
+$btnAuto   = New-Btn $cardR '' 20 440 552 44 $Kleur.Blue
 $btnAuto.Anchor = 'Top,Left,Right'
 $statusBox = New-Object System.Windows.Forms.Panel
-$statusBox.Location = New-Object System.Drawing.Point(20, 496); $statusBox.Size = New-Object System.Drawing.Size(552, 86); $statusBox.BackColor = $C.Input
+$statusBox.Location = New-Object System.Drawing.Point(20, 496); $statusBox.Size = New-Object System.Drawing.Size(552, 86); $statusBox.BackColor = $Kleur.Input
 $statusBox.Anchor = 'Top,Bottom,Left,Right'
 $cardR.Controls.Add($statusBox); Set-Round $statusBox 8
 $status = New-Object System.Windows.Forms.Label
 $status.Dock = 'Fill'; $status.Padding = New-Object System.Windows.Forms.Padding(12, 8, 12, 8)
-$status.Font = $F.Small; $status.ForeColor = $C.Text; $status.BackColor = $C.Input
+$status.Font = $Letter.Small; $status.ForeColor = $Kleur.Text; $status.BackColor = $Kleur.Input
 $statusBox.Controls.Add($status)
 
 # --- onderbalk
 $bar = New-Object System.Windows.Forms.Panel
-$bar.Dock = 'Bottom'; $bar.Height = 66; $bar.BackColor = $C.Bg
+$bar.Dock = 'Bottom'; $bar.Height = 66; $bar.BackColor = $Kleur.Bg
 $form.Controls.Add($bar)
 $bx = 16
 $tools = @{}
 foreach ($t in @('Instellingen', 'YouTube koppelen', 'Clipsmap openen', 'Controle', 'Muziek eronder', 'Cijfers', 'Telefoon', 'Opruimen', 'Logboek')) {
-    $w = [System.Windows.Forms.TextRenderer]::MeasureText($t, $F.Btn).Width + 28
-    $tools[$t] = New-Btn $bar $t $bx 14 $w 36 $C.Card $F.Btn
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($t, $Letter.Btn).Width + 28
+    $tools[$t] = New-Btn $bar $t $bx 14 $w 36 $Kleur.Card $Letter.Btn
     $bx += $w + 8
 }
 $btnSettings = $tools['Instellingen']; $btnSetup = $tools['YouTube koppelen']; $btnFolder = $tools['Clipsmap openen']
@@ -1378,7 +1378,7 @@ $tip.SetToolTip($btnCheck, 'Controleer volgorde, dubbele clips en ontbrekende te
 
 function Set-Status([string]$t) {
     $status.Text = $t
-    $status.ForeColor = $(if ($t -match '^LET OP|mislukt|Fout|lukt niet') { $C.Amber } else { $C.Text })
+    $status.ForeColor = $(if ($t -match '^LET OP|mislukt|Fout|lukt niet') { $Kleur.Amber } else { $Kleur.Text })
     [System.Windows.Forms.Application]::DoEvents()
 }
 
@@ -1388,20 +1388,20 @@ function Update-AutoButton {
     $tijden = (@($script:Cfg.Tijden) -join ', ')
     if ($t -and $script:Cfg.AutoGepauzeerd) {
         $btnAuto.Text = 'Automatisch posten staat op PAUZE  -  klik om uit te zetten'
-        $pill.Text = 'Automatisch: op pauze'; $pill.BackColor = $C.Amber
+        $pill.Text = 'Automatisch: op pauze'; $pill.BackColor = $Kleur.Amber
     } elseif ($t) {
         $btnAuto.Text = ('Automatisch posten staat AAN ({0})  -  klik om uit te zetten' -f $tijden)
-        $pill.Text = 'Automatisch posten: aan'; $pill.BackColor = $C.Green
+        $pill.Text = 'Automatisch posten: aan'; $pill.BackColor = $Kleur.Green
     } else {
         $btnAuto.Text = ('Automatisch posten aanzetten  ({0})' -f $tijden)
-        $pill.Text = 'Automatisch posten: uit'; $pill.BackColor = $C.Hover
+        $pill.Text = 'Automatisch posten: uit'; $pill.BackColor = $Kleur.Hover
     }
-    $btnAuto.BackColor = $(if ($t) { $C.Hover } else { $C.Blue })
+    $btnAuto.BackColor = $(if ($t) { $Kleur.Hover } else { $Kleur.Blue })
     $btnAuto.FlatAppearance.MouseOverBackColor = (Get-Lighter $btnAuto.BackColor 22)
 }
 function Update-ViewButtons {
     for ($i = 0; $i -lt $viewBtns.Count; $i++) {
-        $col = if ($i -eq $script:View) { $C.Accent2 } else { $C.Input }
+        $col = if ($i -eq $script:View) { $Kleur.Accent2 } else { $Kleur.Input }
         $viewBtns[$i].BackColor = $col; $viewBtns[$i].FlatAppearance.MouseOverBackColor = (Get-Lighter $col 22)
     }
 }
@@ -1465,22 +1465,22 @@ function Show-Settings([bool]$eerste) {
     $d.Text = 'Instellingen - Clip-poster'
     $d.ClientSize = New-Object System.Drawing.Size(660, 700)
     $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'; $d.MaximizeBox = $false; $d.MinimizeBox = $false
-    $d.BackColor = $C.Bg; $d.ForeColor = $C.Text; $d.Font = $F.Body
+    $d.BackColor = $Kleur.Bg; $d.ForeColor = $Kleur.Text; $d.Font = $Letter.Body
     $card = New-Card $d 16 16 628 608
     $y = 16
     if ($eerste) {
-        $w = New-Lbl $card 'Welkom! Stel de Clip-poster in voor jouw kanaal. Je kunt dit later altijd aanpassen.' 20 $y $F.Head $C.Text
+        $w = New-Lbl $card 'Welkom! Stel de Clip-poster in voor jouw kanaal. Je kunt dit later altijd aanpassen.' 20 $y $Letter.Head $Kleur.Text
         $y += 34
     }
     function Add-Field([string]$label, [string]$hint, [string]$value, [int]$h) {
-        $null = New-Lbl $card $label 20 $script:fy $F.Badge $C.Muted
+        $null = New-Lbl $card $label 20 $script:fy $Letter.Badge $Kleur.Muted
         $tb = New-Object System.Windows.Forms.TextBox
         $tb.Location = New-Object System.Drawing.Point(20, ($script:fy + 20)); $tb.Size = New-Object System.Drawing.Size(588, $(if ($h) { $h } else { 28 }))
         if ($h) { $tb.Multiline = $true; $tb.ScrollBars = 'Vertical' }
         Set-Input $tb; $tb.Text = $value
         $card.Controls.Add($tb)
         $script:fy += 20 + $tb.Height + 2
-        if ($hint) { $null = New-Lbl $card $hint 20 $script:fy $F.Small $C.Muted; $script:fy += 20 }
+        if ($hint) { $null = New-Lbl $card $hint 20 $script:fy $Letter.Small $Kleur.Muted; $script:fy += 20 }
         $script:fy += 8
         return $tb
     }
@@ -1490,7 +1490,7 @@ function Show-Settings([bool]$eerste) {
     $mapNu = if ($script:Cfg.ClipsMap) { [string]$script:Cfg.ClipsMap } else { $SocialsDir }
     $tbMap = Add-Field 'MAP MET CLIPS' 'Hierin komen de mappen "Vandaag posten", "Gepost" en "Muziek".' $mapNu 0
     $tbMap.Width = 480
-    $btnBrowse = New-Btn $card 'Bladeren' 508 ($tbMap.Top - 1) 100 30 $C.Input $null
+    $btnBrowse = New-Btn $card 'Bladeren' 508 ($tbMap.Top - 1) 100 30 $Kleur.Input $null
     $btnBrowse.Add_Click({
         $fb = New-Object System.Windows.Forms.FolderBrowserDialog
         $fb.SelectedPath = $tbMap.Text
@@ -1502,14 +1502,14 @@ function Show-Settings([bool]$eerste) {
     $tbTijden = Add-Field 'POSTTIJDEN VOOR AUTOMATISCH POSTEN' 'Bijvoorbeeld: 12:07, 16:04, 19:06, 21:03  (net niet op het hele uur is rustiger bij YouTube)' (@($script:Cfg.Tijden) -join ', ') 0
     $chkGame = New-Object System.Windows.Forms.CheckBox
     $chkGame.Text = 'Clips zonder herkende game overslaan'; $chkGame.Checked = [bool]$script:Cfg.GameVerplicht
-    $chkGame.Location = New-Object System.Drawing.Point(20, $script:fy); $chkGame.AutoSize = $true; $chkGame.ForeColor = $C.Text
+    $chkGame.Location = New-Object System.Drawing.Point(20, $script:fy); $chkGame.AutoSize = $true; $chkGame.ForeColor = $Kleur.Text
     $card.Controls.Add($chkGame); $script:fy += 28
     $chkOrig = New-Object System.Windows.Forms.CheckBox
     $chkOrig.Text = 'Regel "Origineel: Replay ..." verplicht (tegen dubbel posten van OBS-replays)'; $chkOrig.Checked = [bool]$script:Cfg.OrigineelVerplicht
-    $chkOrig.Location = New-Object System.Drawing.Point(20, $script:fy); $chkOrig.AutoSize = $true; $chkOrig.ForeColor = $C.Text
+    $chkOrig.Location = New-Object System.Drawing.Point(20, $script:fy); $chkOrig.AutoSize = $true; $chkOrig.ForeColor = $Kleur.Text
     $card.Controls.Add($chkOrig)
-    $ok = New-Btn $d 'Opslaan' 404 636 240 46 $C.Accent $F.Head
-    $cancel = New-Btn $d 'Annuleren' 16 636 160 46 $C.Card $null
+    $ok = New-Btn $d 'Opslaan' 404 636 240 46 $Kleur.Accent $Letter.Head
+    $cancel = New-Btn $d 'Annuleren' 16 636 160 46 $Kleur.Card $null
     $ok.Add_Click({
         $tijden = @(($tbTijden.Text -split '[,;\s]+') | Where-Object { $_ })
         foreach ($t in $tijden) {
