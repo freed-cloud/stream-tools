@@ -37,7 +37,11 @@ if ($script:HasGui) {
         if ($e.Exception.InnerException) { $m += ' (' + $e.Exception.InnerException.Message + ')' }
         try { Write-Log $m } catch { }
         if ($env:CLIPPOSTER_SCREENSHOT) { [Console]::Error.WriteLine($m + "`n" + $e.Exception.ToString()); [Environment]::Exit(1) }
-        [System.Windows.Forms.MessageBox]::Show($m, 'Clip-poster') | Out-Null
+        # Dezelfde fout maar één keer tonen (anders kan een tekenfout een eindeloze reeks meldingen geven).
+        if (-not $script:GetoondeFouten) { $script:GetoondeFouten = @{} }
+        if ($script:GetoondeFouten.ContainsKey($m)) { return }
+        $script:GetoondeFouten[$m] = $true
+        [System.Windows.Forms.MessageBox]::Show($m + "`n`n(Staat ook in het logboek.)", 'Clip-poster') | Out-Null
     })
 }
 # Onverwachte fout? Laat hem zien (venster) of schrijf hem in het logboek (automatisch), in plaats van stil te stoppen.
@@ -149,6 +153,18 @@ $V4Cfg = @{
     )
 }
 $script:Cfg = Load-Json $ConfigFile $null
+if (-not $script:Cfg -and (Test-Path -LiteralPath $ConfigFile)) {
+    # config.json bestaat maar is onleesbaar: eerst de reservekopie, en anders stoppen (nooit overschrijven:
+    # dan zou de kanaalcontrole wegvallen en kunnen clips dubbel gepost worden).
+    $script:Cfg = Load-Json ($ConfigFile + '.bak') $null
+    if ($script:Cfg) { Write-Log 'config.json was onleesbaar; de reservekopie (config.json.bak) is gebruikt.'; Save-Json $ConfigFile $script:Cfg }
+    else {
+        $m = 'De instellingen (config.json in ' + $AppDir + ') zijn onleesbaar en er is geen bruikbare reservekopie. Uit veiligheid wordt er niets gepost. Herstel of verwijder het bestand.'
+        Write-Log $m
+        if ($script:HasGui) { [System.Windows.Forms.MessageBox]::Show($m, 'Clip-poster') | Out-Null }
+        exit 1
+    }
+}
 $cfgVersie = 0
 if ($script:Cfg -and ($script:Cfg.PSObject.Properties.Name -contains 'Versie')) { $cfgVersie = [int]$script:Cfg.Versie }
 if (-not $script:Cfg -or $cfgVersie -lt 4) {
@@ -312,11 +328,17 @@ function Get-GameFromText([string]$text) {
 }
 # De game uit een bestandsnaam (bijv. "12 - Titel - GTA 6.mp4").
 function Get-GameFromName([string]$name) {
-    $n = ($name -replace '[^a-zA-Z0-9]', '').ToLower()
+    # Alleen hele woorden: "GTA 6" of "gta6" in de naam, maar niet "arma" in "Karma".
+    $w1 = ' ' + (($name.ToLower() -replace '[^a-z0-9]+', ' ').Trim()) + ' '
+    $w2 = $w1 -replace '([a-z]) (?=\d)', '$1'          # "gta 6" -> "gta6"
     foreach ($g in @($script:Cfg.Games)) {
         if (-not $g -or -not $g.Naam) { continue }
-        $cands = @(([string]$g.Naam -replace '[^a-zA-Z0-9]', '').ToLower()) + @($g.Tags | ForEach-Object { ([string]$_).Trim().TrimStart('#').ToLower() })
-        foreach ($c in $cands) { if ($c.Length -ge 3 -and $n.Contains($c)) { return [string]$g.Naam } }
+        $cands = @((([string]$g.Naam).ToLower() -replace '[^a-z0-9]+', ' ').Trim()) + @($g.Tags | ForEach-Object { ([string]$_).Trim().TrimStart('#').ToLower() })
+        foreach ($c in $cands) {
+            if ($c.Length -lt 3) { continue }
+            $c2 = $c -replace '([a-z]) (?=\d)', '$1'
+            if ($w1.Contains(' ' + $c + ' ') -or $w2.Contains(' ' + $c2 + ' ')) { return [string]$g.Naam }
+        }
     }
     return ''
 }
@@ -517,11 +539,22 @@ function Get-AllClips {
 $script:ExtraElke = 6
 # Games die om en om gaan: de ingestelde rotatie, of anders alle ingestelde games.
 function Get-Rotatie {
-    $r = @(@($script:Cfg.Rotatie) | Where-Object { $_ })
-    if (-not $r.Count) { $r = @(@($script:Cfg.Games) | Where-Object { $_ -and $_.Naam } | ForEach-Object { [string]$_.Naam }) }
-    return $r
+    $namen = @(@($script:Cfg.Games) | Where-Object { $_ -and $_.Naam } | ForEach-Object { [string]$_.Naam })
+    $r = New-Object System.Collections.Generic.List[string]
+    foreach ($x in @(@($script:Cfg.Rotatie) | Where-Object { $_ })) {
+        # Schrijfwijze van de game zelf gebruiken ("gta 6" -> "GTA 6").
+        $echt = @($namen | Where-Object { $_ -ieq ([string]$x).Trim() }) | Select-Object -First 1
+        if (-not $echt) { $echt = ([string]$x).Trim() }
+        if (-not ($r | Where-Object { $_ -ieq $echt })) { $r.Add($echt) }
+    }
+    if (-not $r.Count) { foreach ($n in $namen) { $r.Add($n) } }
+    return $r.ToArray()
 }
-function Get-SortKey($c) { return ('{0}|{1:D4}' -f $c.Key, $c.Nr) }
+function Get-SortKey($c) {
+    # Clips zonder Origineel-regel: op hun nummer ("2 - ..." voor "10 - ..."), niet op de tekst van de naam.
+    if ($c.Key -like 'vandaag:*') { return ('vandaag:{0:D6}|{1}' -f $c.Nr, $c.Key) }
+    return ('{0}|{1:D4}' -f $c.Key, $c.Nr)
+}
 
 # De wachtrij voor YouTube: oud naar nieuw per game, om en om volgens de rotatie.
 function Get-Queue($all) {
@@ -535,15 +568,18 @@ function Get-Queue($all) {
     # er af en toe tussen: één na elke $ExtraElke posts uit de hoofdrotatie.
     $ExtraElke = $script:ExtraElke
     $rot = New-Object System.Collections.Generic.List[string]
-    foreach ($g in @(Get-Rotatie)) { if ($perGame.Contains($g)) { $rot.Add($g) } }
+    $inRot = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($g in @(Get-Rotatie)) {
+        foreach ($k in @($perGame.Keys)) { if ([string]$k -ieq $g -and $inRot.Add([string]$k)) { $rot.Add([string]$k) } }
+    }
     $extra = New-Object System.Collections.Generic.Queue[object]
-    foreach ($g in $perGame.Keys) { if (-not $rot.Contains($g)) { foreach ($c in $perGame[$g]) { $extra.Enqueue($c) } } }
+    foreach ($g in @($perGame.Keys)) { if (-not $inRot.Contains([string]$g)) { foreach ($c in $perGame[$g]) { $extra.Enqueue($c) } } }
     $main = New-Object System.Collections.Generic.List[object]
     if ($rot.Count -gt 0) {
         # Begin met de game na de laatst geposte, zodat het ook over dagen heen om en om blijft.
         $start = 0
         $last = [string]$script:Cfg.LaatsteGame
-        if ($last -and $rot.Contains($last)) { $start = ($rot.IndexOf($last) + 1) % $rot.Count }
+        for ($j = 0; $j -lt $rot.Count; $j++) { if ($last -and $rot[$j] -ieq $last) { $start = ($j + 1) % $rot.Count } }
         $total = 0; foreach ($g in $rot) { $total += $perGame[$g].Count }
         $i = $start
         while ($main.Count -lt $total) {
@@ -763,7 +799,7 @@ function Complete-Upload([string]$key, [string]$game, [string]$out, [string]$wan
         $script:Cfg.KanaalId = $parts[3]
         if (-not $script:Cfg.KanaalNaam -and $parts[4]) { $script:Cfg.KanaalNaam = $parts[4] }
     }
-    if (@(Get-Rotatie) -contains $game) { $script:Cfg.LaatsteGame = $game; $script:Cfg.SindsExtra = [int]$script:Cfg.SindsExtra + 1 }
+    if (@(Get-Rotatie | Where-Object { $_ -ieq $game }).Count) { $script:Cfg.LaatsteGame = $game; $script:Cfg.SindsExtra = [int]$script:Cfg.SindsExtra + 1 }
     else { $script:Cfg.SindsExtra = 0 }
     Save-Cfg
     $msg = 'Op YouTube gezet ({0}) op kanaal "{1}": https://youtube.com/shorts/{2}' -f $parts[2], $parts[4], $parts[1]
@@ -833,7 +869,7 @@ function Invoke-AutoPost {
 
 function Get-AutoTask { try { return (Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop) } catch { return $null } }
 
-function Set-AutoTask([bool]$on) {
+function Set-AutoTask([bool]$on, [switch]$HoudPauze) {
     if (-not $on) {
         if (Get-AutoTask) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
         Write-Log 'Automatisch posten uitgezet.'
@@ -849,8 +885,9 @@ function Set-AutoTask([bool]$on) {
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Hours 1) -MultipleInstances IgnoreNew
     $principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Description 'Clip-poster: zet op vaste tijden de volgende clip op YouTube.' -Force | Out-Null
-    $script:Cfg.AutoGepauzeerd = $false; $script:Cfg.AutoReden = ''; Save-Cfg
-    Write-Log ('Automatisch posten aangezet: ' + (@($script:Cfg.Tijden) -join ', '))
+    if (-not $HoudPauze) { $script:Cfg.AutoGepauzeerd = $false; $script:Cfg.AutoReden = '' }
+    Save-Cfg
+    Write-Log ('Automatisch posten ingesteld: ' + (@($script:Cfg.Tijden) -join ', '))
 }
 
 # Video en tekst naar de map Gepost (alleen als hij op YouTube én TikTok staat).
@@ -1496,10 +1533,11 @@ $lst.Add_SelectedIndexChanged({
 function Show-Settings([bool]$eerste) {
     $d = New-Object System.Windows.Forms.Form
     $d.Text = 'Instellingen - Clip-poster'
-    $d.ClientSize = New-Object System.Drawing.Size(660, 700)
+    $extraH = if ($eerste) { 40 } else { 0 }
+    $d.ClientSize = New-Object System.Drawing.Size(660, (700 + $extraH))
     $d.StartPosition = 'CenterParent'; $d.FormBorderStyle = 'FixedDialog'; $d.MaximizeBox = $false; $d.MinimizeBox = $false
     $d.BackColor = $Kleur.Bg; $d.ForeColor = $Kleur.Text; $d.Font = $Letter.Body
-    $card = New-Card $d 16 16 628 608
+    $card = New-Card $d 16 16 628 (608 + $extraH)
     $y = 16
     if ($eerste) {
         $w = New-Lbl $card 'Welkom! Stel de Clip-poster in voor jouw kanaal. Je kunt dit later altijd aanpassen.' 20 $y $Letter.Head $Kleur.Text
@@ -1541,8 +1579,8 @@ function Show-Settings([bool]$eerste) {
     $chkOrig.Text = 'Regel "Origineel: Replay ..." verplicht (tegen dubbel posten van OBS-replays)'; $chkOrig.Checked = [bool]$script:Cfg.OrigineelVerplicht
     $chkOrig.Location = New-Object System.Drawing.Point(20, $script:fy); $chkOrig.AutoSize = $true; $chkOrig.ForeColor = $Kleur.Text
     $card.Controls.Add($chkOrig)
-    $ok = New-Btn $d 'Opslaan' 404 636 240 46 $Kleur.Accent $Letter.Head
-    $cancel = New-Btn $d 'Annuleren' 16 636 160 46 $Kleur.Card $null
+    $ok = New-Btn $d 'Opslaan' 404 (636 + $extraH) 240 46 $Kleur.Accent $Letter.Head
+    $cancel = New-Btn $d 'Annuleren' 16 (636 + $extraH) 160 46 $Kleur.Card $null
     $ok.Add_Click({
         $tijden = @(($tbTijden.Text -split '[,;\s]+') | Where-Object { $_ })
         foreach ($t in $tijden) {
@@ -1556,12 +1594,17 @@ function Show-Settings([bool]$eerste) {
         foreach ($l in ($tbGames.Text -split "`r?`n")) {
             if (-not $l.Trim()) { continue }
             $naam = $l; $tags = @()
-            if ($l -match '^(.*?):(.*)$') { $naam = $Matches[1]; $tags = @(($Matches[2] -split '[,;\s]+') | ForEach-Object { $_.Trim().TrimStart('#').ToLower() } | Where-Object { $_ }) }
+            if ($l -match '^(.*):(.*)$') { $naam = $Matches[1]; $tags = @(($Matches[2] -split '[,;\s]+') | ForEach-Object { ($_.Trim().TrimStart('#').ToLower()) -replace '[^\w]', '' } | Where-Object { $_ }) }
             $naam = $naam.Trim()
             if (-not $tags.Count) { $tags = @(($naam -replace '[^a-zA-Z0-9]', '').ToLower()) }
             if ($naam) { $games.Add([pscustomobject]@{ Naam = $naam; Tags = $tags }) }
         }
-        $map = $tbMap.Text.Trim()
+        $onbekend = @(($tbRot.Text -split ',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Where-Object { $n = $_; -not @($games | Where-Object { $_.Naam -ieq $n }).Count })
+        if ($onbekend.Count) { [System.Windows.Forms.MessageBox]::Show(('Bij "om en om posten" staat een game die niet in de lijst met games staat: {0}' -f ($onbekend -join ', ')), 'Instellingen') | Out-Null; return }
+        $map = $tbMap.Text.Trim().Trim('"').Trim()
+        if (-not $map) { $map = Join-Path $Desktop 'Clips voor socials' }
+        if (-not [IO.Path]::IsPathRooted($map)) { [System.Windows.Forms.MessageBox]::Show('Kies een volledig pad voor de map met clips, bijvoorbeeld C:\Users\jij\Videos\Clips (of gebruik Bladeren).', 'Instellingen') | Out-Null; return }
+        $map = [IO.Path]::GetFullPath($map).TrimEnd('\')
         try { if (-not (Test-Path -LiteralPath $map)) { New-Item -ItemType Directory -Path $map -Force | Out-Null } }
         catch { [System.Windows.Forms.MessageBox]::Show(('De map "{0}" kan niet worden gemaakt.' -f $map), 'Instellingen') | Out-Null; return }
         Reload-Cfg
@@ -1578,7 +1621,10 @@ function Show-Settings([bool]$eerste) {
         Save-Cfg; Set-Folders
         foreach ($sub in @($VandaagDir, $GepostDir, $MuziekDir)) { if (-not (Test-Path -LiteralPath $sub)) { New-Item -ItemType Directory -Path $sub -Force | Out-Null } }
         # Andere posttijden? Dan de Windows-taak bijwerken.
-        if ((Get-AutoTask) -and $oudeTijden -ne ($tijden -join ',')) { try { Set-AutoTask $true } catch { } }
+        if ((Get-AutoTask) -and $oudeTijden -ne ($tijden -join ',')) {
+            try { Set-AutoTask $true -HoudPauze }
+            catch { [System.Windows.Forms.MessageBox]::Show(('De nieuwe posttijden konden niet in de Windows-taak worden gezet: {0}' -f $_.Exception.Message), 'Instellingen') | Out-Null }
+        }
         $d.DialogResult = 'OK'; $d.Close()
     })
     $cancel.Add_Click({ $d.Close() })
@@ -1747,9 +1793,21 @@ $btnSetup.Add_Click({
     Copy-Item -LiteralPath $dlg.FileName -Destination $SecretFile -Force
     Remove-Item -LiteralPath $TokenFile -ErrorAction SilentlyContinue
     try {
-        $null = Get-AccessToken
+        $tok = Get-AccessToken
+        Reload-Cfg
+        $kan = $null
+        try { $kan = @((Invoke-RestMethod -Uri 'https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true' -Headers @{ Authorization = "Bearer $tok" }).items) | Select-Object -First 1 } catch { }
+        if ($kan) {
+            $naam = [string]$kan.snippet.title
+            if ($script:Cfg.KanaalId -and $script:Cfg.KanaalId -ne $kan.id) {
+                $a = [System.Windows.Forms.MessageBox]::Show(("Je bent ingelogd op het kanaal ""{0}"".`n`nTot nu toe postte de Clip-poster naar ""{1}"".`n`nVoortaan naar ""{0}"" posten?" -f $naam, (Get-KanaalTekst)), 'Ander kanaal', 'YesNo')
+                if ($a -ne 'Yes') { Set-Status 'Niets veranderd. Klik opnieuw op YouTube koppelen en kies het goede kanaal.'; Refresh-List; return }
+            }
+            $script:Cfg.KanaalId = [string]$kan.id; $script:Cfg.KanaalNaam = $naam
+        }
         $script:Cfg.AutoGepauzeerd = $false; $script:Cfg.AutoReden = ''; Save-Cfg
-        Set-Status 'YouTube is gekoppeld. Bij de eerste upload onthoudt de Clip-poster op welk kanaal hij komt.'
+        if ($kan) { Set-Status ('YouTube is gekoppeld aan het kanaal "{0}". Uploads naar een ander kanaal worden voortaan tegengehouden.' -f $naam) }
+        else { Set-Status 'YouTube is gekoppeld. Bij de eerste upload onthoudt de Clip-poster op welk kanaal hij komt.' }
     } catch { Set-Status ('Koppelen mislukt: ' + $_.Exception.Message) }
     Refresh-List
 })

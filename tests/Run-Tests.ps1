@@ -280,5 +280,24 @@ Check ($script:Cfg.AutoGepauzeerd -and $r -match 'Mijn Kanaal') 'daarna wel pauz
 $re = Load-Json $ConfigFile $null
 Check ($re.Versie -eq 5 -and @($re.Games).Count -eq 2 -and $re.TwitchRegel -like '*voorbeeld') 'instellingen bewaard'
 
+"== Na review: hoofdletters in rotatie, volgorde op nummer, bestandsnamen"
+$script:Cfg.AutoGepauzeerd = $false; $script:Cfg.Rotatie = @('minecraft', 'VALORANT'); $script:Cfg.LaatsteGame = 'Minecraft'; Save-Cfg
+Nieuw '10 - Nog een kasteel' "Groter kasteel #minecraft"
+Nieuw '11 - Nog een ace' "Ace! #valorant"
+Nieuw '9 - Tweede blok' "Blokken #minecraft"
+$q = @(Get-Queue (Get-AllClips))
+"   " + (($q | % { '{0}:{1}' -f $_.Nr, $_.Game }) -join ' > ')
+Check (@($q.Key | Select-Object -Unique).Count -eq $q.Count) 'geen dubbele clips bij andere hoofdletters in de rotatie'
+Check ($q[0].Game -eq 'Valorant') 'na Minecraft komt Valorant (rotatie ondanks hoofdletters)'
+$mc = @($q | ? Game -eq 'Minecraft' | % { $_.Nr })
+Check (($mc -join ',') -eq '2,9,10') "volgorde op nummer: 2, 9, 10 ($($mc -join ','))"
+Check ((Get-GameFromName 'Karma - Minecraft clip') -eq 'Minecraft' -and -not (Get-GameFromName 'Minecraftig')) 'game alleen op hele woorden in bestandsnaam'
+"== Kapotte config.json: reservekopie gebruiken"
+Save-Cfg; Save-Cfg   # zorgt voor een .bak
+'{ kapot' | Set-Content $ConfigFile
+. $src -GeenVenster
+Check ($script:Cfg.KanaalId -eq 'UCnieuw123') 'reservekopie gebruikt, kanaalcontrole blijft'
+Check ((Load-Json $ConfigFile $null).KanaalId -eq 'UCnieuw123') 'config.json hersteld'
+
 ""
 if ($script:fails) { "MISLUKT: $script:fails test(s)"; exit 1 } else { 'ALLE TESTS GESLAAGD'; exit 0 }
