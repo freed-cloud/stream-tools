@@ -1,0 +1,44 @@
+name: Release
+
+# Bij een nieuwe versie (tag zoals v5.0.0): eerst alle tests, dan de downloadbestanden maken
+# en als GitHub-release publiceren. De website linkt naar de nieuwste release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tests (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          choco install ffmpeg -y --no-progress | Out-Null
+          $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + $env:Path
+          powershell -NoProfile -ExecutionPolicy Bypass -File tests\Run-Tests.ps1
+          exit $LASTEXITCODE
+      - name: Downloadbestanden maken
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist, pak\Clip-poster, pak\Stream-check | Out-Null
+          Copy-Item ClipPoster\ClipPoster.ps1, 'ClipPoster\Start Clip-poster.bat', ClipPoster\LEESMIJ.txt pak\Clip-poster\
+          Copy-Item LICENSE pak\Clip-poster\LICENSE.txt
+          Copy-Item StreamCheck\* pak\Stream-check\
+          Copy-Item LICENSE pak\Stream-check\LICENSE.txt
+          Compress-Archive -Path pak\Clip-poster -DestinationPath dist\Clip-poster.zip
+          Compress-Archive -Path pak\Stream-check -DestinationPath dist\Stream-check.zip
+          Get-FileHash dist\*.zip -Algorithm SHA256 | ForEach-Object { '{0}  {1}' -f $_.Hash.ToLower(), (Split-Path $_.Path -Leaf) } | Set-Content dist\SHA256.txt
+          Get-Content dist\SHA256.txt
+      - name: Release publiceren
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { 'v0.0.0-test' }
+          gh release create $tag dist\Clip-poster.zip dist\Stream-check.zip dist\SHA256.txt --title "Clip-poster $tag" --notes-file ClipPoster\RELEASE.md --latest

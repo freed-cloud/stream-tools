@@ -1224,9 +1224,6 @@ $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Clip-poster'
 $form.ClientSize = New-Object System.Drawing.Size(1180, 770)
 $form.MinimumSize = New-Object System.Drawing.Size(980, 730)
-# Past het venster niet op het scherm (bijv. een laptop), dan zo groot als het scherm.
-$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-if ($form.Width -gt $wa.Width -or $form.Height -gt $wa.Height) { $form.Size = New-Object System.Drawing.Size([math]::Min($form.Width, $wa.Width), [math]::Min($form.Height, $wa.Height)) }
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $Kleur.Bg; $form.ForeColor = $Kleur.Text
 $form.Font = $Letter.Body
@@ -1747,6 +1744,9 @@ $btnSetup.Add_Click({
     Refresh-List
 })
 
+# Past het venster niet op het scherm (bijv. een laptop), dan zo groot als het scherm.
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+if ($form.Width -gt $wa.Width -or $form.Height -gt $wa.Height) { $form.Size = New-Object System.Drawing.Size([math]::Min($form.Width, $wa.Width), [math]::Min($form.Height, $wa.Height)) }
 $form.Add_Shown({
     Refresh-List
     if (-not $script:Cfg.Ingesteld -and -not $env:CLIPPOSTER_SCREENSHOT) {

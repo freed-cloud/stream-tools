@@ -1,0 +1,32 @@
+﻿Clip-poster - gratis en open source
+door Freddy den Haan  -  https://freed-cloud.github.io/clip-poster/
+
+Zet je game-clips automatisch op YouTube Shorts, in een slimme volgorde,
+en maakt TikTok zo makkelijk mogelijk.
+
+AAN DE SLAG
+1. Klik met rechts op het zip-bestand > Eigenschappen > vink "Blokkering opheffen" aan > OK.
+   (Windows blokkeert anders bestanden die van internet komen.)
+2. Pak de zip uit, bijvoorbeeld naar je map Documenten\Clip-poster.
+3. Dubbelklik op "Start Clip-poster.bat".
+4. Vul het instelscherm in: je kanaalnaam, je games (met hashtags) en je posttijden.
+5. Klik op "YouTube koppelen" en volg de handleiding:
+   https://freed-cloud.github.io/clip-poster/handleiding.html
+
+JE CLIPS KLAARZETTEN
+Zet in de map "Vandaag posten" (in je clipsmap) per clip:
+   12 - Mijn beste moment.mp4
+   12 - Mijn beste moment.txt     <- de tekst met hashtags, bijv. "Wat een schot! #valorant"
+De game wordt herkend aan de hashtags. De Clip-poster post de games om en om, oud naar nieuw.
+
+GOED OM TE WETEN
+- Werkt op Windows 10 en 11 (Windows PowerShell 5.1 zit er standaard in). Niets te installeren.
+- Je inloggegevens blijven op je eigen pc (versleuteld met Windows). Er gaat niets naar mij.
+- TikTok en Instagram laten geen automatisch posten toe voor deze app. Voor TikTok zet de
+  Clip-poster alles klaar (tekst op het klembord, video geselecteerd, uploadpagina open).
+- YouTube zet uploads via een eigen, niet door Google gecontroleerde app soms op prive.
+  De Clip-poster meldt dat en pauzeert; zet de video dan in YouTube Studio op openbaar.
+- Muziek onder clips zetten gebruikt het gratis programma ffmpeg (de Clip-poster biedt aan het te installeren).
+
+Licentie: MIT (vrij te gebruiken, aan te passen en te delen). Zie LICENSE.txt.
+Code, tests en vragen: https://github.com/freed-cloud/stream-tools
