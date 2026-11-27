@@ -1223,7 +1223,10 @@ function Save-Shot($frm, [string]$path) {
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Clip-poster'
 $form.ClientSize = New-Object System.Drawing.Size(1180, 770)
-$form.MinimumSize = New-Object System.Drawing.Size(1100, 760)
+$form.MinimumSize = New-Object System.Drawing.Size(980, 730)
+# Past het venster niet op het scherm (bijv. een laptop), dan zo groot als het scherm.
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+if ($form.Width -gt $wa.Width -or $form.Height -gt $wa.Height) { $form.Size = New-Object System.Drawing.Size([math]::Min($form.Width, $wa.Width), [math]::Min($form.Height, $wa.Height)) }
 $form.StartPosition = 'CenterScreen'
 $form.BackColor = $Kleur.Bg; $form.ForeColor = $Kleur.Text
 $form.Font = $Letter.Body
@@ -1330,6 +1333,14 @@ $null = New-Lbl $cardR 'ZICHTBAARHEID' 20 224 $Letter.Badge $Kleur.Muted
 $cmbPrivacy = New-Object System.Windows.Forms.ComboBox
 $cmbPrivacy.DropDownStyle = 'DropDownList'; $cmbPrivacy.FlatStyle = 'Flat'
 $cmbPrivacy.BackColor = $Kleur.Input; $cmbPrivacy.ForeColor = $Kleur.Text
+$cmbPrivacy.DrawMode = 'OwnerDrawFixed'; $cmbPrivacy.ItemHeight = 22
+$cmbPrivacy.Add_DrawItem({
+    param($s, $e)
+    if ($e.Index -lt 0) { return }
+    $sel = ($e.State -band [System.Windows.Forms.DrawItemState]::Selected) -ne 0
+    $e.Graphics.FillRectangle((Get-Brush $(if ($sel) { $Kleur.Accent2 } else { $Kleur.Input })), $e.Bounds)
+    [System.Windows.Forms.TextRenderer]::DrawText($e.Graphics, [string]$s.Items[$e.Index], $Letter.Body, $e.Bounds, $Kleur.Text, [System.Windows.Forms.TextFormatFlags]'VerticalCenter,Left')
+})
 [void]$cmbPrivacy.Items.AddRange(@('openbaar', 'verborgen (unlisted)', 'privé'))
 $cmbPrivacy.Location = New-Object System.Drawing.Point(130, 220); $cmbPrivacy.Size = New-Object System.Drawing.Size(200, 28)
 $privacyMap = @{ 'openbaar' = 'public'; 'verborgen (unlisted)' = 'unlisted'; 'privé' = 'private' }
@@ -1347,8 +1358,19 @@ $btnTtDone = New-Btn $cardR 'Staat op TikTok: klaar' 20 394 272 40 $Kleur.Green
 $btnRonde  = New-Btn $cardR 'TikTok-ronde: alles een voor een' 300 394 272 40 $Kleur.Black
 $btnAuto   = New-Btn $cardR '' 20 440 552 44 $Kleur.Blue
 $btnAuto.Anchor = 'Top,Left,Right'
+# Knoppen rechts schalen mee met de breedte van het venster.
+function Set-RightLayout {
+    $w = $cardR.ClientSize.Width - 40
+    $half = [int](($w - 8) / 2)
+    foreach ($row in @(@($btnYt, $btnTt, 348), @($btnTtDone, $btnRonde, 394))) {
+        $row[0].SetBounds(20, $row[2], $half, 40); $row[1].SetBounds((28 + $half), $row[2], ($w - $half - 8), 40)
+    }
+    $lblNext.Width = $w
+}
+$cardR.Add_Resize({ Set-RightLayout })
 $statusBox = New-Object System.Windows.Forms.Panel
 $statusBox.Location = New-Object System.Drawing.Point(20, 496); $statusBox.Size = New-Object System.Drawing.Size(552, 86); $statusBox.BackColor = $Kleur.Input
+$statusBox.MinimumSize = New-Object System.Drawing.Size(100, 36)
 $statusBox.Anchor = 'Top,Bottom,Left,Right'
 $cardR.Controls.Add($statusBox); Set-Round $statusBox 8
 $status = New-Object System.Windows.Forms.Label
@@ -1362,15 +1384,16 @@ $bar.Dock = 'Bottom'; $bar.Height = 66; $bar.BackColor = $Kleur.Bg
 $form.Controls.Add($bar)
 $bx = 16
 $tools = @{}
-foreach ($t in @('Instellingen', 'YouTube koppelen', 'Clipsmap openen', 'Controle', 'Muziek eronder', 'Cijfers', 'Telefoon', 'Opruimen', 'Logboek')) {
-    $w = [System.Windows.Forms.TextRenderer]::MeasureText($t, $Letter.Btn).Width + 28
-    $tools[$t] = New-Btn $bar $t $bx 14 $w 36 $Kleur.Card $Letter.Btn
-    $bx += $w + 8
-}
-$btnSettings = $tools['Instellingen']; $btnSetup = $tools['YouTube koppelen']; $btnFolder = $tools['Clipsmap openen']
-$btnCheck = $tools['Controle']; $btnMusic = $tools['Muziek eronder']; $btnStats = $tools['Cijfers']
-$btnPhone = $tools['Telefoon']; $btnClean = $tools['Opruimen']; $btnLog = $tools['Logboek']
 $tip = New-Object System.Windows.Forms.ToolTip
+foreach ($t in @('Instellingen', 'YouTube koppelen', 'Clipsmap', 'Controle', 'Muziek', 'Cijfers', 'Telefoon', 'Opruimen', 'Logboek')) {
+    $w = [System.Windows.Forms.TextRenderer]::MeasureText($t, $Letter.Btn).Width + 24
+    $tools[$t] = New-Btn $bar $t $bx 14 $w 36 $Kleur.Card $Letter.Btn
+    $bx += $w + 6
+}
+$btnSettings = $tools['Instellingen']; $btnSetup = $tools['YouTube koppelen']; $btnFolder = $tools['Clipsmap']
+$btnCheck = $tools['Controle']; $btnMusic = $tools['Muziek']; $btnStats = $tools['Cijfers']
+$tip.SetToolTip($btnFolder, 'De map met je clips openen in Verkenner')
+$btnPhone = $tools['Telefoon']; $btnClean = $tools['Opruimen']; $btnLog = $tools['Logboek']
 $tip.SetToolTip($btnClean, 'Clips die op YouTube en TikTok staan naar de map Gepost verplaatsen')
 $tip.SetToolTip($btnMusic, 'Muziek onder clips zetten die dat nodig hebben (mp3-bestanden in de map Muziek)')
 $tip.SetToolTip($btnPhone, 'Meldingen op je telefoon met de gratis app ntfy')
@@ -1400,7 +1423,10 @@ function Update-AutoButton {
     $btnAuto.FlatAppearance.MouseOverBackColor = (Get-Lighter $btnAuto.BackColor 22)
 }
 function Update-ViewButtons {
+    $x = 12
     for ($i = 0; $i -lt $viewBtns.Count; $i++) {
+        $w = [System.Windows.Forms.TextRenderer]::MeasureText($viewBtns[$i].Text, $Letter.Btn).Width + 26
+        $viewBtns[$i].SetBounds($x, 12, $w, 32); $x += $w + 6
         $col = if ($i -eq $script:View) { $Kleur.Accent2 } else { $Kleur.Input }
         $viewBtns[$i].BackColor = $col; $viewBtns[$i].FlatAppearance.MouseOverBackColor = (Get-Lighter $col 22)
     }
