@@ -75,6 +75,8 @@ jobs:
     name: Venster openen en schermafbeeldingen (Windows PowerShell 5.1)
     runs-on: windows-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v5
       - name: Clip-poster openen met testclips (DrawToBitmap)
@@ -93,3 +95,18 @@ jobs:
         with:
           name: schermafbeeldingen
           path: schermafbeeldingen/
+      - name: Schermafbeeldingen bewaren in de branch "schermafbeeldingen" (voor de website)
+        if: always() && github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path schermafbeeldingen)) { exit 0 }
+          $tmp = Join-Path $env:RUNNER_TEMP 'shots'
+          Copy-Item schermafbeeldingen $tmp -Recurse
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan schermafbeeldingen-tmp
+          git rm -rf --quiet .
+          Get-ChildItem $tmp | Copy-Item -Destination .
+          git add -A
+          git commit -q -m "Schermafbeeldingen van ${{ github.sha }}"
+          git push -f origin HEAD:schermafbeeldingen

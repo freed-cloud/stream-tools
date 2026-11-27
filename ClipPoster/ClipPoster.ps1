@@ -29,6 +29,16 @@ if ($script:HasGui) {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
     [System.Windows.Forms.Application]::EnableVisualStyles()
+    # Fouten in knoppen en tekenwerk: duidelijke melding en in het logboek, in plaats van de .NET-foutmelding.
+    [System.Windows.Forms.Application]::SetUnhandledExceptionMode([System.Windows.Forms.UnhandledExceptionMode]::CatchException)
+    [System.Windows.Forms.Application]::add_ThreadException({
+        param($s, $e)
+        $m = 'Er ging iets mis: ' + $e.Exception.Message
+        if ($e.Exception.InnerException) { $m += ' (' + $e.Exception.InnerException.Message + ')' }
+        try { Write-Log $m } catch { }
+        if ($env:CLIPPOSTER_SCREENSHOT) { [Console]::Error.WriteLine($m + "`n" + $e.Exception.ToString()); [Environment]::Exit(1) }
+        [System.Windows.Forms.MessageBox]::Show($m, 'Clip-poster') | Out-Null
+    })
 }
 # Onverwachte fout? Laat hem zien (venster) of schrijf hem in het logboek (automatisch), in plaats van stil te stoppen.
 trap {
