@@ -769,7 +769,7 @@ function Complete-Upload([string]$key, [string]$game, [string]$out, [string]$wan
     $msg = 'Op YouTube gezet ({0}) op kanaal "{1}": https://youtube.com/shorts/{2}' -f $parts[2], $parts[4], $parts[1]
     if ($wantPrivacy -ne 'private' -and $parts[2] -eq 'private') {
         $script:Cfg.AutoGepauzeerd = $true
-        $script:Cfg.AutoReden = 'YouTube heeft de video op privé gezet (dat doet YouTube bij uploads via een niet-geverifieerde app). Zet hem in YouTube Studio op openbaar. Om dit te voorkomen moet de app bij Google geverifieerd worden.'
+        $script:Cfg.AutoReden = 'YouTube heeft de video op privé gezet. Dat doet YouTube bij uploads via een Google-project dat nog niet door YouTube is gecontroleerd (audit). Vraag de gratis audit aan; uitleg staat in de handleiding (knop YouTube koppelen).'
         Save-Cfg
         $msg += "`nLET OP: " + $script:Cfg.AutoReden + ' Posten staat op pauze.'
         Send-Phone 'Clip-poster: video op prive, op pauze' $msg 'high'
