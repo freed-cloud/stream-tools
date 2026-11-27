@@ -6,6 +6,10 @@ on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      versie:
+        description: 'Versienummer, bijvoorbeeld v5.0.0'
+        required: true
 
 permissions:
   contents: write
@@ -40,5 +44,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { 'v0.0.0-test' }
-          gh release create $tag dist\Clip-poster.zip dist\Stream-check.zip dist\SHA256.txt --title "Clip-poster $tag" --notes-file ClipPoster\RELEASE.md --latest
+          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { '${{ inputs.versie }}' }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+$') { Write-Host "Ongeldig versienummer: $tag"; exit 1 }
+          gh release create $tag --target '${{ github.sha }}' dist\Clip-poster.zip dist\Stream-check.zip dist\SHA256.txt --title "Clip-poster $tag" --notes-file ClipPoster\RELEASE.md --latest
