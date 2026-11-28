@@ -6,5 +6,5 @@ Gratis en open source. Download **Clip-poster.zip**, klik met rechts > Eigenscha
 - Het kanaal wordt bij de eerste upload onthouden; gaat een upload later naar een ander kanaal, dan stopt hij.
 - Fouten in het venster worden netjes gemeld en in het logboek gezet.
 
-Handleiding: https://freed-cloud.github.io/clip-poster/handleiding.html
+Handleiding: https://freddydenhaan.com/clip-poster/handleiding.html
 Controleer je download met SHA256.txt.

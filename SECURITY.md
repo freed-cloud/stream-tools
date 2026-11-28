@@ -9,6 +9,6 @@
 - **Telefoonmeldingen** (optioneel, via ntfy.sh) bevatten alleen korte teksten, zoals de link naar een geposte video of een foutmelding. Het onderwerp is een willekeurige code die bij de eerste start op de pc wordt gemaakt en niet in deze repository staat.
 - **Alleen lokaal.** De Stream-check praat alleen met OBS op `127.0.0.1`.
 
-Privacybeleid van de Clip-poster: https://freed-cloud.github.io/clip-poster/privacy.html
+Privacybeleid van de Clip-poster: https://freddydenhaan.com/clip-poster/privacy.html
 
-Een probleem gevonden? Neem contact op via https://freed-cloud.github.io/.
+Een probleem gevonden? Neem contact op via https://freddydenhaan.com/.

@@ -1,5 +1,5 @@
 ﻿Clip-poster - gratis en open source
-door Freddy den Haan  -  https://freed-cloud.github.io/clip-poster/
+door Freddy den Haan  -  https://freddydenhaan.com/clip-poster/
 
 Zet je game-clips automatisch op YouTube Shorts, in een slimme volgorde,
 en maakt TikTok zo makkelijk mogelijk.
@@ -11,7 +11,7 @@ AAN DE SLAG
 3. Dubbelklik op "Start Clip-poster.bat".
 4. Vul het instelscherm in: je kanaalnaam, je games (met hashtags) en je posttijden.
 5. Klik op "YouTube koppelen" en volg de handleiding:
-   https://freed-cloud.github.io/clip-poster/handleiding.html
+   https://freddydenhaan.com/clip-poster/handleiding.html
 
 JE CLIPS KLAARZETTEN
 Zet in de map "Vandaag posten" (in je clipsmap) per clip:

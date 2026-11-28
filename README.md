@@ -15,9 +15,9 @@ een echt probleem zien, uitzoeken hoe het op te lossen is, het bouwen, en het go
 
 De Clip-poster is voor iedereen: stel je eigen kanaal, games (hashtags), volgorde en posttijden in.
 
-**[Download Clip-poster.zip](https://github.com/freed-cloud/stream-tools/releases/latest/download/Clip-poster.zip)** · [Uitleg en handleiding](https://freed-cloud.github.io/clip-poster/) · licentie MIT
+**[Download Clip-poster.zip](https://github.com/freed-cloud/stream-tools/releases/latest/download/Clip-poster.zip)** · [Uitleg en handleiding](https://freddydenhaan.com/clip-poster/) · licentie MIT
 
-![De Clip-poster](https://freed-cloud.github.io/assets/img/clip-poster.png)
+![De Clip-poster](https://freddydenhaan.com/assets/img/clip-poster.png)
 
 Beide draaien op **Windows PowerShell 5.1**, dat standaard in Windows zit. Er hoeft niets extra geïnstalleerd te worden (alleen ffmpeg voor de muziekfunctie).
 

@@ -1781,7 +1781,7 @@ $btnFolder.Add_Click({
     Start-Process explorer.exe -ArgumentList ('"{0}"' -f $SocialsDir)
 })
 $btnSettings.Add_Click({ if (Show-Settings $false) { Set-Status 'Instellingen opgeslagen.'; Refresh-List } })
-$HandleidingUrl = 'https://freed-cloud.github.io/clip-poster/handleiding.html'
+$HandleidingUrl = 'https://freddydenhaan.com/clip-poster/handleiding.html'
 $btnSetup.Add_Click({
     $msg = "YouTube koppelen (eenmalig, ongeveer 10 minuten):`n`n1. Maak in Google Cloud een gratis project met de YouTube Data API v3.`n2. Maak een OAuth-client van het type 'Desktop-app' en download het bestand client_secret.json.`n3. Kies dat bestand zo meteen hier.`n4. Log in bij Google en kies het kanaal {0}.`n`nStap voor stap met plaatjes: Ja = handleiding openen in je browser.`nNee = ik heb client_secret.json al, verder." -f (Get-KanaalTekst)
     $a = [System.Windows.Forms.MessageBox]::Show($msg, 'YouTube koppelen', 'YesNoCancel')
